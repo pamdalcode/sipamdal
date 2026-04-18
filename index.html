@@ -101,6 +101,28 @@ const decQR = (v) => v && v.startsWith(QR_PREFIX) ? v.replace(QR_PREFIX,"").repl
 const ALL_AREAS = Object.values(PATROL_AREAS).flat();
 
 const ROLLING_TIMES = ["06:00","12:00","18:00","00:00","03:00"];
+
+// ─── HARI MERAH / LIBUR NASIONAL ──────────────────────────────────────────────
+const HARI_MERAH = new Set([
+  "2025-01-01","2025-01-27","2025-01-28","2025-01-29",
+  "2025-03-29","2025-03-30","2025-03-31","2025-04-18",
+  "2025-05-01","2025-05-12","2025-05-13","2025-05-29",
+  "2025-06-01","2025-06-06","2025-06-07","2025-06-08","2025-06-09",
+  "2025-08-17","2025-09-05","2025-10-02","2025-12-25","2025-12-26",
+  "2026-01-01","2026-01-28","2026-01-29","2026-01-30",
+  "2026-03-20","2026-03-27","2026-04-02","2026-04-03",
+  "2026-05-01","2026-05-14","2026-05-24","2026-06-01",
+  "2026-08-17","2026-12-25"
+]);
+function isHariLibur(date) {
+  const d = new Date(date);
+  const dow = d.getDay(); // 0=Sun 6=Sat
+  const key = d.toISOString().slice(0,10);
+  return dow === 0 || dow === 6 || HARI_MERAH.has(key);
+}
+// getLiburTambahan: data libur manual tersimpan di Firebase/localStorage
+// key: "YYYY-MM-DD", value: [nama1, nama2]
+// Fungsi helper dipakai di JadwalTab & DashTab
 const INC_CAT = ["Rendah","Sedang","Penting"];
 const CAT_COL = { Rendah:"#16a34a", Sedang:"#d97706", Penting:"#dc2626" };
 const CAT_BG  = { Rendah:"#f0fdf4", Sedang:"#fffbeb", Penting:"#fef2f2" };
@@ -395,7 +417,7 @@ function ReadOnlyBanner({reguHari}) {
     </div>
   );
 }
-function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols,standJaga,mutations,setTab,canEdit}) {
+function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols,standJaga,mutations,posRollingLog,liburData,setTab,canEdit,isAdmin}) {
   const pending=packages.filter(p=>p.status==="Belum Diambil").length;
   const staying=guests.filter(g=>g.status==="Masih Ada").length;
   const todP=patrols.filter(p=>new Date(p.ts).toDateString()===now.toDateString()).length;
@@ -411,18 +433,28 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
   const emptyPos = POS_LIST.filter(p => !(posAssign[p]?.length));
   const posKosong = emptyPos.length > 0;
 
-  // ── Alert: belum ada patroli hari ini ──
-  const noPatrol = todP === 0;
+  // ── Alert: patroli – cek apakah sudah patroli dalam 1 jam terakhir ──
+  const lastPatrol = patrols.filter(p=>new Date(p.ts).toDateString()===now.toDateString())
+    .sort((a,b)=>b.ts-a.ts)[0];
+  const msSincePatrol = lastPatrol ? now - lastPatrol.ts : Infinity;
+  const patrolOverdue = msSincePatrol > 3600000; // > 1 jam
 
-  // ── Alert: belum ada rolling hari ini ──
-  // Rolling = mutasi yang ada field toRegu yang berbeda dengan fromRegu hari ini
+  // ── Alert: rolling pos – cek apakah sudah rolling dalam 2 jam terakhir ──
+  // Rolling pos dicatat di posRolling (dipisah dari penempatan biasa)
+  const lastRolling = (posRollingLog||[]).filter(r=>new Date(r.ts).toDateString()===now.toDateString())
+    .sort((a,b)=>b.ts-a.ts)[0];
+  const msSinceRolling = lastRolling ? now - lastRolling.ts : Infinity;
+  const rollingOverdue = msSinceRolling > 7200000; // > 2 jam
+
+  // ── Alert: belum ada mutasi/serah terima ──
   const todayMut = mutations.filter(m => new Date(m.ts).toDateString() === now.toDateString());
-  const noRolling = todayMut.length === 0;
+  const noMutasi = todayMut.length === 0;
 
   const alerts = [
-    ...(posKosong ? [{icon:"⚠️", msg:`Pos kosong: ${emptyPos.join(", ")}`, col:"#dc2626", bg:"#fef2f2", tab:"pos"}] : []),
-    ...(noPatrol  ? [{icon:"🔍", msg:"Belum ada patroli hari ini", col:"#d97706", bg:"#fffbeb", tab:"patrol"}] : []),
-    ...(noRolling ? [{icon:"🔄", msg:"Belum ada laporan rolling/mutasi shift", col:"#7c3aed", bg:"#f5f3ff", tab:"mutation"}] : []),
+    ...(posKosong    ? [{icon:"⚠️", msg:`Pos kosong: ${emptyPos.join(", ")}`, col:"#dc2626", bg:"#fef2f2", tab:"pos"}] : []),
+    ...(patrolOverdue? [{icon:"🔍", msg: todP===0 ? "Belum ada patroli hari ini" : `Patroli terakhir ${Math.floor(msSincePatrol/60000)} menit lalu — saatnya patroli!`, col:"#d97706", bg:"#fffbeb", tab:"patrol"}] : []),
+    ...(rollingOverdue&&canEdit? [{icon:"🔄", msg:`Sudah ${Math.floor(msSinceRolling/60000)} menit belum rolling pos — ingatkan anggota!`, col:"#0891b2", bg:"#ecfeff", tab:"pos"}] : []),
+    ...(noMutasi     ? [{icon:"📋", msg:"Belum ada laporan serah terima shift hari ini", col:"#7c3aed", bg:"#f5f3ff", tab:"mutation"}] : []),
   ];
 
   const cards=[
@@ -457,7 +489,7 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
       </div>
 
       {/* Alert notifikasi */}
-      {canEdit && alerts.length > 0 && (
+      {alerts.length > 0 && (
         <div style={{marginBottom:14}}>
           {alerts.map((a,i)=>(
             <div key={i} onClick={()=>setTab(a.tab)} style={{background:a.bg,border:`1.5px solid ${a.col}40`,borderRadius:10,padding:"10px 14px",marginBottom:7,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
@@ -470,6 +502,33 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
           ))}
         </div>
       )}
+      {/* Libur tambahan hari ini — manual dari admin */}
+      {(()=>{
+        const todayKey = now.toISOString().slice(0,10);
+        const liburHariIni = liburData?.[todayKey] || [];
+        if(!isHariLibur(now) && liburHariIni.length===0) return null;
+        const jenis = HARI_MERAH.has(todayKey)?"📅 Libur Nasional / Hari Merah":now.getDay()===0?"📅 Hari Minggu":"📅 Hari Sabtu";
+        return (
+          <div style={{background:"linear-gradient(135deg,#fef3c7,#fde68a)",border:"1.5px solid #fbbf24",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#92400e",marginBottom:4}}>🌴 Hari Libur {jenis}</div>
+            {liburHariIni.length>0?(
+              <>
+                <div style={{fontSize:11,color:"#78350f",marginBottom:6}}>Anggota berhak libur tambahan hari ini:</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:6}}>
+                  {liburHariIni.map(nm=>(
+                    <div key={nm} style={{background:"rgba(255,255,255,.65)",borderRadius:8,padding:"5px 12px",fontSize:12.5,fontWeight:800,color:"#92400e"}}>🏖 {nm}</div>
+                  ))}
+                </div>
+              </>
+            ):(
+              <div style={{fontSize:11,color:"#b45309",marginTop:4}}>
+                Belum ada anggota yang ditetapkan libur hari ini.
+                {isAdmin&&<span style={{color:"#92400e",fontWeight:700}}> Admin dapat menetapkan di menu Absen.</span>}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
         {cards.map(c=>(
@@ -510,7 +569,7 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
 }
 
 // ─── JADWAL PIKET ─────────────────────────────────────────────────────────────
-function JadwalTab({now}) {
+function JadwalTab({now,liburData,isAdmin,setTab}) {
   const days=[]; for(let i=-1;i<=13;i++){const d=new Date(now);d.setDate(d.getDate()+i);days.push(d);}
   const RC={1:"#1d4ed8",2:"#059669",3:"#7c3aed"};
   const RB={1:"#eff6ff",2:"#f0fdf4",3:"#f5f3ff"};
@@ -540,13 +599,21 @@ function JadwalTab({now}) {
         {days.map((d,i)=>{
           const r=getReguHari(d);
           const isT=d.toDateString()===now.toDateString();
+          const libur=isHariLibur(d);
+          const dKey=d.toISOString().slice(0,10);
+          const liburTambahan=(liburData&&liburData[dKey])||[];
           return (
-            <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 70px 1.5fr",padding:"8px 12px",borderBottom:"1px solid #f1f5f9",background:isT?RB[r]:i%2===0?"#fff":"#f9fafb",alignItems:"center"}}>
+            <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 70px 1.5fr",padding:"8px 12px",borderBottom:"1px solid #f1f5f9",background:libur?"#fef9c3":isT?RB[r]:i%2===0?"#fff":"#f9fafb",alignItems:"center"}}>
               <div>
-                <div style={{fontSize:12,fontWeight:isT?800:600,color:isT?RC[r]:"#1e3a8a"}}>{d.toLocaleDateString("id-ID",{day:"numeric",month:"short"})}{isT&&<span style={{marginLeft:5,fontSize:9,background:RC[r],color:"#fff",borderRadius:4,padding:"1px 5px"}}>HARI INI</span>}</div>
-                <div style={{fontSize:10,color:"#9ca3af"}}>{d.toLocaleDateString("id-ID",{weekday:"long"})}</div>
+                <div style={{fontSize:12,fontWeight:isT?800:600,color:libur?"#92400e":isT?RC[r]:"#1e3a8a"}}>
+                  {d.toLocaleDateString("id-ID",{day:"numeric",month:"short"})}
+                  {isT&&<span style={{marginLeft:5,fontSize:9,background:RC[r],color:"#fff",borderRadius:4,padding:"1px 5px"}}>HARI INI</span>}
+                  {libur&&<span style={{marginLeft:5,fontSize:9,background:"#fbbf24",color:"#78350f",borderRadius:4,padding:"1px 5px"}}>LIBUR</span>}
+                </div>
+                <div style={{fontSize:10,color:libur?"#b45309":"#9ca3af"}}>{d.toLocaleDateString("id-ID",{weekday:"long"})}</div>
+                {liburTambahan.length>0&&<div style={{fontSize:9,color:"#92400e",marginTop:1}}>🏖 Libur: {liburTambahan.join(", ")}</div>}
               </div>
-              <Bdg text={`Regu ${r}`} color={RC[r]}/>
+              <Bdg text={`Regu ${r}`} color={libur?"#d97706":RC[r]}/>
               <div style={{fontSize:11,color:"#374151"}}>{REGU[r].join(", ")}</div>
             </div>
           );
@@ -562,28 +629,51 @@ const encPosQR = (pos) => POS_QR_PREFIX + pos.replace(/ /g,"_");
 const decPosQR = (v) => v && v.startsWith(POS_QR_PREFIX) ? v.replace(POS_QR_PREFIX,"").replace(/_/g," ") : null;
 
 // ─── POS ──────────────────────────────────────────────────────────────────────
-function PosTab({reguHari,posAssign,setPosAssign,toast,canEdit}) {
+function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,toast,canEdit,isAdmin}) {
   const members=REGU[reguHari]||[];
+  const [mode,setMode]=useState("assign");   // "assign" | "rolling"
   const [scanOpen,setScanOpen]=useState(false);
-  const [scanPos,setScanPos]=useState(null); // pos yang sedang di-scan
-  const [confirm,setConfirm]=useState(null); // {pos, scanned}
+  const [confirm,setConfirm]=useState(null);
   const [selectedMember,setSelectedMember]=useState("");
+  const [rollingFrom,setRollingFrom]=useState("");
+  const [rollingTo,setRollingTo]=useState("");
   const [viewPosQR,setViewPosQR]=useState(null);
 
-  // Scan QR pos: QR pos berisi kode pos, setelah scan pilih anggota yang akan ditempatkan
+  // ── Tempatkan anggota ke pos (scan QR / manual) ──
   const onScanPos=(raw)=>{
     setScanOpen(false);
     const pos = decPosQR(raw) || POS_LIST.find(p=>raw.includes(p));
     if(!pos||!POS_LIST.includes(pos)){toast("QR tidak dikenali!",false);return;}
+    if(mode==="rolling"){
+      setRollingTo(pos); return;
+    }
     const asgn=posAssign[pos]||[]; const cap=POS_CAP[pos]||1;
     if(asgn.length>=cap){toast(`${pos} sudah penuh!`,false);return;}
-    setConfirm({pos}); setSelectedMember("");
+    setConfirm({pos,type:"assign"}); setSelectedMember("");
   };
 
   const doAssign=()=>{
     if(!selectedMember){toast("Pilih anggota!",false);return;}
     const updated={...posAssign,[confirm.pos]:[...(posAssign[confirm.pos]||[]),selectedMember]};
-    setPosAssign(updated); setConfirm(null); toast(`${selectedMember} ditempatkan di ${confirm.pos}!`);
+    setPosAssign(updated); setConfirm(null); toast(`${selectedMember} → ${confirm.pos}!`);
+  };
+
+  // ── Rolling pos: pindah anggota dari pos lama ke pos baru ──
+  const doRolling=()=>{
+    if(!rollingFrom||!rollingTo){toast("Pilih anggota & pos tujuan!",false);return;}
+    if(rollingFrom===rollingTo){toast("Pos asal dan tujuan sama!",false);return;}
+    // Cari siapa yg ada di rollingFrom pos
+    const fromPos = Object.entries(posAssign).find(([,ms])=>ms?.includes(rollingFrom))?.[0];
+    const toAsgn = posAssign[rollingTo]||[]; const cap=POS_CAP[rollingTo]||1;
+    if(toAsgn.length>=cap){toast(`${rollingTo} sudah penuh!`,false);return;}
+    const updated = {...posAssign};
+    if(fromPos) updated[fromPos]=(updated[fromPos]||[]).filter(x=>x!==rollingFrom);
+    updated[rollingTo]=[...(updated[rollingTo]||[]),rollingFrom];
+    setPosAssign(updated);
+    const log={id:Date.now(),ts:Date.now(),member:rollingFrom,fromPos:fromPos||"—",toPos:rollingTo};
+    setPosRollingLog([...(posRollingLog||[]),log]);
+    toast(`Rolling: ${rollingFrom} → ${rollingTo}!`);
+    setRollingFrom(""); setRollingTo("");
   };
 
   const removeFromPos=(pos,m)=>{
@@ -592,43 +682,111 @@ function PosTab({reguHari,posAssign,setPosAssign,toast,canEdit}) {
     setPosAssign(updated); toast(`${m} dilepas dari ${pos}`);
   };
 
+  // Log rolling hari ini
+  const todayRolling=(posRollingLog||[]).filter(r=>new Date(r.ts).toDateString()===new Date().toDateString());
+  const allAssigned=Object.values(posAssign).flat();
+
   return (
     <div>
-      <PH title="Penempatan Pos" sub={`Regu ${reguHari}: ${members.join(", ")}`} action={canEdit&&<Btn onClick={()=>setScanOpen(true)} color="#1d4ed8"><IC n="cam" s={13}/> Scan QR Pos</Btn>}/>
+      <PH title="Penempatan Pos" sub={`Regu ${reguHari}: ${members.join(", ")}`} action={canEdit&&(
+        <div style={{display:"flex",gap:6}}>
+          <Btn onClick={()=>setScanOpen(true)} color="#1d4ed8" size="sm"><IC n="cam" s={12}/> Scan</Btn>
+        </div>
+      )}/>
       {!canEdit&&<ReadOnlyBanner reguHari={reguHari}/>}
-      {canEdit&&<div style={{background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1d4ed8"}}>
-        📋 Scan QR yang terpasang di setiap pos untuk menempatkan anggota. Atau lihat QR pos dengan tombol <strong>QR</strong> di bawah.
+
+      {/* Tab Mode */}
+      {canEdit&&<div style={{display:"flex",gap:0,marginBottom:14,background:"#f1f5f9",borderRadius:10,padding:3}}>
+        {[["assign","📍 Penempatan"],["rolling","🔄 Rolling Pos"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setMode(v)} style={{flex:1,padding:"8px 0",fontSize:12.5,fontWeight:700,borderRadius:8,border:"none",cursor:"pointer",background:mode===v?"#fff":"transparent",color:mode===v?"#1d4ed8":"#6b7280",boxShadow:mode===v?"0 1px 6px rgba(0,0,0,.08)":"none",fontFamily:"inherit",transition:"all .15s"}}>
+            {l}
+          </button>
+        ))}
       </div>}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        {POS_LIST.map(pos=>{
-          const col=POS_COL[pos], cap=POS_CAP[pos], asgn=posAssign[pos]||[];
-          const isFull=asgn.length>=cap;
-          return (
-            <div key={pos} style={{background:"#fff",border:`1.5px solid ${isFull?col+"60":col+"28"}`,borderRadius:12,overflow:"hidden"}}>
-              <div style={{background:isFull?col:col+"cc",padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:11,fontWeight:800,color:"#fff",lineHeight:1.3}}>{pos}</span>
-                <span style={{background:"rgba(255,255,255,.25)",color:"#fff",borderRadius:5,padding:"2px 6px",fontSize:10,whiteSpace:"nowrap"}}>{asgn.length}/{cap}</span>
-              </div>
-              <div style={{padding:10}}>
-                {asgn.length===0&&<div style={{fontSize:11,color:"#9ca3af",textAlign:"center",padding:"8px 0"}}>Belum ada</div>}
-                {asgn.map(m=>(
-                  <div key={m} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f1f5f9"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <IC n="ok" s={12} c={col}/>
-                      <span style={{fontSize:12.5,fontWeight:700,color:"#1e3a8a"}}>{m}</span>
-                    </div>
-                    {canEdit&&<button onClick={()=>removeFromPos(pos,m)} style={{background:"none",border:"none",color:"#fca5a5",cursor:"pointer",fontSize:14,padding:2}}>✕</button>}
+
+      {/* ── MODE: PENEMPATAN ── */}
+      {mode==="assign"&&(
+        <>
+          {canEdit&&<div style={{background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1d4ed8"}}>
+            📋 Scan QR di pos atau ketuk <strong>+ Tambah</strong> untuk menempatkan anggota.
+            {isAdmin&&<span> Tombol <strong>QR</strong> untuk lihat kode QR pos.</span>}
+          </div>}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {POS_LIST.map(pos=>{
+              const col=POS_COL[pos], cap=POS_CAP[pos], asgn=posAssign[pos]||[];
+              const isFull=asgn.length>=cap;
+              return (
+                <div key={pos} style={{background:"#fff",border:`1.5px solid ${isFull?col+"60":col+"28"}`,borderRadius:12,overflow:"hidden"}}>
+                  <div style={{background:isFull?col:col+"cc",padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:11,fontWeight:800,color:"#fff",lineHeight:1.3}}>{pos}</span>
+                    <span style={{background:"rgba(255,255,255,.25)",color:"#fff",borderRadius:5,padding:"2px 6px",fontSize:10,whiteSpace:"nowrap"}}>{asgn.length}/{cap}</span>
                   </div>
-                ))}
-                <div style={{marginTop:8,display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap"}}>
-                  {canEdit&&!isFull&&<Btn onClick={()=>{setConfirm({pos});setSelectedMember("");}} color={col} size="sm"><IC n="plus" s={11}/> Tambah</Btn>}
-                  <Btn onClick={()=>setViewPosQR(pos)} color="#6b7280" variant="outline" size="sm"><IC n="qr" s={11}/> QR</Btn>
+                  <div style={{padding:10}}>
+                    {asgn.length===0&&<div style={{fontSize:11,color:"#9ca3af",textAlign:"center",padding:"8px 0"}}>Belum ada</div>}
+                    {asgn.map(m=>(
+                      <div key={m} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f1f5f9"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <IC n="ok" s={12} c={col}/>
+                          <span style={{fontSize:12.5,fontWeight:700,color:"#1e3a8a"}}>{m}</span>
+                        </div>
+                        {canEdit&&<button onClick={()=>removeFromPos(pos,m)} style={{background:"none",border:"none",color:"#fca5a5",cursor:"pointer",fontSize:14,padding:2}}>✕</button>}
+                      </div>
+                    ))}
+                    <div style={{marginTop:8,display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap"}}>
+                      {canEdit&&!isFull&&<Btn onClick={()=>{setConfirm({pos,type:"assign"});setSelectedMember("");}} color={col} size="sm"><IC n="plus" s={11}/> Tambah</Btn>}
+                      {isAdmin&&<Btn onClick={()=>setViewPosQR(pos)} color="#6b7280" variant="outline" size="sm"><IC n="qr" s={11}/> QR</Btn>}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* ── MODE: ROLLING POS ── */}
+      {mode==="rolling"&&canEdit&&(
+        <div>
+          <div style={{background:"#ecfeff",border:"1.5px solid #67e8f9",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:800,color:"#0e7490",marginBottom:10}}>🔄 Pindah / Rolling Pos Jaga</div>
+            <Inp label="Anggota yang dipindah" value={rollingFrom} onChange={e=>setRollingFrom(e.target.value)} as="select">
+              <option value="">— Pilih Anggota —</option>
+              {members.map(m=>{
+                const curPos=Object.entries(posAssign).find(([,ms])=>ms?.includes(m))?.[0]||"Belum ditempatkan";
+                return <option key={m} value={m}>{m} ({curPos})</option>;
+              })}
+            </Inp>
+            <Inp label="Pindah ke pos" value={rollingTo} onChange={e=>setRollingTo(e.target.value)} as="select">
+              <option value="">— Pilih Pos Tujuan —</option>
+              {POS_LIST.map(p=>{
+                const asgn=posAssign[p]||[]; const cap=POS_CAP[p]||1;
+                return <option key={p} value={p} disabled={asgn.length>=cap}>{p} ({asgn.length}/{cap})</option>;
+              })}
+            </Inp>
+            <div style={{display:"flex",gap:8,marginTop:4}}>
+              <Btn onClick={doRolling} color="#0891b2" size="lg" full><IC n="rot" s={14}/> Konfirmasi Rolling</Btn>
+              {isAdmin&&<Btn onClick={()=>setScanOpen(true)} color="#6b7280" variant="outline">Scan QR</Btn>}
             </div>
-          );
-        })}
-      </div>
+          </div>
+
+          {/* Log rolling hari ini */}
+          {todayRolling.length>0&&(
+            <div style={{background:"#fff",border:"1.5px solid #dbeafe",borderRadius:12,padding:"12px 14px"}}>
+              <div style={{fontSize:12,fontWeight:800,color:"#0891b2",marginBottom:8}}>Log Rolling Hari Ini ({todayRolling.length})</div>
+              {[...todayRolling].reverse().map(r=>(
+                <div key={r.id} style={{padding:"6px 0",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:13}}>🔄</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12.5,fontWeight:700,color:"#1e3a8a"}}>{r.member}: {r.fromPos} → {r.toPos}</div>
+                    <div style={{fontSize:10.5,color:"#6b7280"}}>{fmtT(r.ts)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {todayRolling.length===0&&<div style={{color:"#9ca3af",fontSize:12,textAlign:"center",padding:"20px 0"}}>Belum ada rolling hari ini</div>}
+        </div>
+      )}
 
       {/* Scanner Modal */}
       <Modal open={scanOpen} onClose={()=>setScanOpen(false)} title="Scan QR Pos" noPad>
@@ -640,26 +798,26 @@ function PosTab({reguHari,posAssign,setPosAssign,toast,canEdit}) {
         />
       </Modal>
 
-      {/* Confirm assign member */}
+      {/* Confirm assign */}
       <Modal open={!!confirm} onClose={()=>setConfirm(null)} title={`Tempatkan ke ${confirm?.pos}`}>
         {confirm&&(
           <div>
             <div style={{background:POS_COL[confirm.pos]+"14",borderRadius:10,padding:"12px",marginBottom:14,textAlign:"center",border:`1.5px solid ${POS_COL[confirm.pos]}30`}}>
               <div style={{fontSize:11,color:"#6b7280"}}>Pos Tujuan</div>
               <div style={{fontSize:18,fontWeight:900,color:POS_COL[confirm.pos]}}>{confirm.pos}</div>
-              <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>Kapasitas: {POS_CAP[confirm.pos]} orang · Terisi: {(posAssign[confirm.pos]||[]).length}</div>
+              <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>Kapasitas: {POS_CAP[confirm.pos]} · Terisi: {(posAssign[confirm.pos]||[]).length}</div>
             </div>
             <Inp label="Pilih Anggota" value={selectedMember} onChange={e=>setSelectedMember(e.target.value)} as="select">
               <option value="">— Pilih Anggota —</option>
-              {members.filter(m=>!Object.values(posAssign).flat().includes(m)).map(m=><option key={m}>{m}</option>)}
+              {members.filter(m=>!allAssigned.includes(m)).map(m=><option key={m}>{m}</option>)}
             </Inp>
             <div style={{display:"flex",gap:8}}><Btn onClick={doAssign} color={POS_COL[confirm.pos]} size="lg" full><IC n="ok" s={14}/> Tempatkan</Btn><Btn onClick={()=>setConfirm(null)} color="#6b7280" variant="outline">Batal</Btn></div>
           </div>
         )}
       </Modal>
 
-      {/* QR Pos untuk dicetak/ditempel di pos */}
-      <Modal open={!!viewPosQR} onClose={()=>setViewPosQR(null)} title={`QR Pos: ${viewPosQR}`}>
+      {/* QR Pos — hanya admin */}
+      {isAdmin&&<Modal open={!!viewPosQR} onClose={()=>setViewPosQR(null)} title={`QR Pos: ${viewPosQR}`}>
         {viewPosQR&&(
           <div style={{textAlign:"center"}}>
             <div style={{background:"#fff",border:`2px solid ${POS_COL[viewPosQR]}`,borderRadius:14,padding:18,display:"inline-block",marginBottom:10}}>
@@ -671,7 +829,7 @@ function PosTab({reguHari,posAssign,setPosAssign,toast,canEdit}) {
             <Btn onClick={()=>setViewPosQR(null)} color="#1d4ed8">Tutup</Btn>
           </div>
         )}
-      </Modal>
+      </Modal>}
     </div>
   );
 }
@@ -724,7 +882,7 @@ function StandTab({standJaga,setStandJaga,posAssign,reguHari,toast,canEdit}) {
 }
 
 // ─── PATROL ───────────────────────────────────────────────────────────────────
-function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit}) {
+function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin}) {
   const [scanOpen,setScanOpen]=useState(false);
   const [confirm,setConfirm]=useState(null);
   const [officer,setOfficer]=useState("");
@@ -766,7 +924,7 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit}) {
                   {last?.photo&&<div style={{marginTop:4,fontSize:10,color:"#7c3aed",fontWeight:700}}>📷 Ada foto</div>}
                   <div style={{marginTop:6,display:"flex",gap:4,justifyContent:"center"}}>
                     {canEdit&&<Btn onClick={()=>onScan(area)} color={POS_COL[activePos]} size="sm">Scan</Btn>}
-                    <Btn onClick={()=>setViewQR(area)} color="#6b7280" variant="outline" size="sm"><IC n="print" s={11}/></Btn>
+                    {isAdmin&&<Btn onClick={()=>setViewQR(area)} color="#6b7280" variant="outline" size="sm"><IC n="print" s={11}/></Btn>}
                   </div>
                 </div>
               );
@@ -1188,7 +1346,7 @@ function MutPrint({m, onClose}) {
   );
 }
 
-function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incidents=[],packages=[],guests=[],currentUser,rollings=[],standJaga=[]}) {
+function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incidents=[],packages=[],guests=[],currentUser,standJaga=[]}) {
   const [open,setOpen]=useState(false);
   const [photo,setPhoto]=useState(null);
   const [viewPhoto,setViewPhoto]=useState(null);
@@ -1299,16 +1457,7 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
       isi += "\n";
     }
 
-    // 6. ROLLING SHIFT
-    const rollingHari = rollings.filter(r => new Date(r.ts).toDateString() === today);
-    if (rollingHari.length > 0) {
-      isi += "\ud83d\udd04 ROLLING SHIFT (" + rollingHari.length + "x):\n";
-      rollingHari.forEach(r => {
-        isi += "  - Jam " + (r.time||fmtT(r.ts)) + " \u2014 Regu " + r.fromRegu + (r.toRegu ? " \u2192 Regu " + r.toRegu : "") + "\n";
-        if (r.notes) isi += "    Ket: " + r.notes + "\n";
-      });
-      isi += "\n";
-    }
+    // Rolling shift dihapus dari sistem
 
     // Ringkasan
     isi += "\u2500\u2500\u2500 RINGKASAN \u2500\u2500\u2500\n";
@@ -1384,6 +1533,162 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
   );
 }
 
+// ─── ABSEN TAB ────────────────────────────────────────────────────────────────
+function AbsenTab({absen,setAbsen,liburData,setLiburData,reguHari,toast,canEdit,isAdmin,now}) {
+  const todayKey = now.toISOString().slice(0,10);
+  const todayLabel = now.toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  const members = REGU[reguHari]||[];
+  const [viewDate,setViewDate] = useState(todayKey);
+
+  // absen structure: { "YYYY-MM-DD": { "Nama": {status:"Hadir"|"Izin"|"Sakit"|"Alpa"|"Libur", ket:"..."} } }
+  const todayAbsen = absen[viewDate] || {};
+  const isToday = viewDate === todayKey;
+  const isHarilibur = isHariLibur(new Date(viewDate));
+
+  // Set status absen anggota
+  const setStatus=(nama,status,ket="")=>{
+    if(!canEdit&&!isAdmin){toast("Tidak bisa edit",false);return;}
+    const updated={...absen,[viewDate]:{...todayAbsen,[nama]:{status,ket,ts:Date.now()}}};
+    setAbsen(updated); toast(`${nama}: ${status}`);
+  };
+
+  // Set libur tambahan manual untuk tanggal tertentu
+  const toggleLiburTambahan=(nama)=>{
+    if(!isAdmin){toast("Hanya admin yang bisa menetapkan libur tambahan",false);return;}
+    const cur=liburData[viewDate]||[];
+    const next=cur.includes(nama)?cur.filter(x=>x!==nama):[...cur,nama];
+    setLiburData({...liburData,[viewDate]:next});
+    toast(cur.includes(nama)?`${nama} dihapus dari libur tambahan`:`${nama} ditetapkan libur tambahan`);
+  };
+
+  const STATUS_COL={Hadir:"#059669",Izin:"#d97706",Sakit:"#7c3aed",Alpa:"#dc2626",Libur:"#0891b2"};
+  const STATUS_BG ={Hadir:"#f0fdf4",Izin:"#fffbeb",Sakit:"#f5f3ff",Alpa:"#fef2f2",Libur:"#ecfeff"};
+  const statusList=["Hadir","Izin","Sakit","Alpa","Libur"];
+
+  // Statistik
+  const allDays=Object.keys(absen).sort();
+  const allMembers=Object.values(REGU).flat();
+
+  // Buat daftar tanggal 7 hari terakhir untuk navigasi
+  const navDays=[];
+  for(let i=6;i>=0;i--){const d=new Date(now);d.setDate(d.getDate()-i);navDays.push(d.toISOString().slice(0,10));}
+
+  const liburTambahanHari=liburData[viewDate]||[];
+  const reguViewDate = getReguHari(new Date(viewDate));
+  const membersView = REGU[reguViewDate]||[];
+
+  // Rekap bulan ini
+  const thisMonth = now.toISOString().slice(0,7);
+  const rekapBulan = {};
+  allMembers.forEach(nm=>{
+    rekapBulan[nm]={Hadir:0,Izin:0,Sakit:0,Alpa:0,Libur:0};
+    Object.entries(absen).forEach(([dt,da])=>{
+      if(dt.startsWith(thisMonth)&&da[nm]) rekapBulan[nm][da[nm].status]=(rekapBulan[nm][da[nm].status]||0)+1;
+    });
+  });
+
+  return (
+    <div>
+      <PH title="Absensi Anggota" sub={`Regu ${reguHari} · ${todayLabel}`}/>
+      {!canEdit&&!isAdmin&&<ReadOnlyBanner reguHari={reguHari}/>}
+
+      {/* Navigasi tanggal */}
+      <div style={{display:"flex",gap:5,overflowX:"auto",marginBottom:14,paddingBottom:2}}>
+        {navDays.map(d=>{
+          const isS=d===viewDate;
+          const libH=isHariLibur(new Date(d));
+          return (
+            <button key={d} onClick={()=>setViewDate(d)} style={{flexShrink:0,padding:"6px 10px",borderRadius:9,border:`1.5px solid ${isS?"#1d4ed8":libH?"#fbbf24":"#e0eaf8"}`,background:isS?"#1d4ed8":libH?"#fef9c3":"#fff",color:isS?"#fff":libH?"#92400e":"#374151",fontWeight:isS?800:600,fontSize:11.5,cursor:"pointer",fontFamily:"inherit"}}>
+              <div>{new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short"})}</div>
+              <div style={{fontSize:9,opacity:.7}}>{new Date(d).toLocaleDateString("id-ID",{weekday:"short"})}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Header tanggal yang dipilih */}
+      <div style={{background:isHarilibur?"linear-gradient(135deg,#fef3c7,#fde68a)":"linear-gradient(135deg,#1e3a8a,#2563eb)",borderRadius:12,padding:"12px 16px",marginBottom:14,color:isHarilibur?"#92400e":"#fff"}}>
+        <div style={{fontSize:11,opacity:.7}}>Tanggal</div>
+        <div style={{fontSize:16,fontWeight:900}}>{new Date(viewDate).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
+        <div style={{fontSize:11,marginTop:4,opacity:.8}}>Regu {reguViewDate} piket{isHarilibur?" · 🌴 Hari Libur":""}</div>
+        {liburTambahanHari.length>0&&<div style={{marginTop:6,fontSize:11.5,fontWeight:700}}>🏖 Libur tambahan: {liburTambahanHari.join(", ")}</div>}
+      </div>
+
+      {/* Daftar absen anggota */}
+      <div style={{background:"#fff",border:"1.5px solid #dbeafe",borderRadius:12,overflow:"hidden",marginBottom:14}}>
+        <div style={{background:"#1d4ed8",padding:"8px 14px",display:"grid",gridTemplateColumns:"1fr auto",alignItems:"center"}}>
+          <div style={{fontSize:11,fontWeight:800,color:"#fff"}}>Regu {reguViewDate} — Absensi</div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,.7)"}}>
+            {Object.values(absen[viewDate]||{}).filter(a=>a.status==="Hadir").length}/{membersView.length} hadir
+          </div>
+        </div>
+        {membersView.map(nm=>{
+          const st=todayAbsen[nm];
+          const isLiburTambahan=liburTambahanHari.includes(nm);
+          return (
+            <div key={nm} style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+                <div style={{width:32,height:32,borderRadius:9,background:(st?STATUS_BG[st.status]:"#f1f5f9"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>
+                  {st?.status==="Hadir"?"✅":st?.status==="Izin"?"📝":st?.status==="Sakit"?"🤒":st?.status==="Alpa"?"❌":st?.status==="Libur"?"🏖":"⬜"}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#1e3a8a"}}>{nm}{isLiburTambahan&&<span style={{marginLeft:6,fontSize:10,background:"#fbbf24",color:"#78350f",borderRadius:5,padding:"1px 6px",fontWeight:700}}>LIBUR +</span>}</div>
+                  {st&&<div style={{fontSize:10.5,color:STATUS_COL[st.status],fontWeight:700}}>{st.status}{st.ket&&` — ${st.ket}`}</div>}
+                  {!st&&<div style={{fontSize:10.5,color:"#9ca3af"}}>Belum diabsen</div>}
+                </div>
+                {/* Tombol libur tambahan — admin only */}
+                {isAdmin&&isHarilibur&&(
+                  <button onClick={()=>toggleLiburTambahan(nm)} style={{background:isLiburTambahan?"#fef9c3":"#f8faff",border:`1px solid ${isLiburTambahan?"#fbbf24":"#dbeafe"}`,borderRadius:7,padding:"4px 8px",fontSize:10,color:isLiburTambahan?"#92400e":"#6b7280",fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                    {isLiburTambahan?"🌴 Libur +":"+ Libur"}
+                  </button>
+                )}
+              </div>
+              {(canEdit||isAdmin)&&(
+                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                  {statusList.map(s=>(
+                    <button key={s} onClick={()=>setStatus(nm,s)} style={{padding:"4px 10px",borderRadius:7,border:`1.5px solid ${st?.status===s?STATUS_COL[s]:"#e0eaf8"}`,background:st?.status===s?STATUS_BG[s]:"#fff",color:st?.status===s?STATUS_COL[s]:"#6b7280",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Rekap bulan ini */}
+      <div style={{background:"#fff",border:"1.5px solid #dbeafe",borderRadius:12,overflow:"hidden"}}>
+        <div style={{background:"#1d4ed8",padding:"8px 14px"}}>
+          <div style={{fontSize:11,fontWeight:800,color:"#fff"}}>📊 Rekap Bulan {now.toLocaleDateString("id-ID",{month:"long",year:"numeric"})}</div>
+        </div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+            <thead>
+              <tr style={{background:"#f8faff"}}>
+                <th style={{padding:"6px 10px",textAlign:"left",fontWeight:800,color:"#1e3a8a",borderBottom:"1px solid #e0eaf8"}}>Anggota</th>
+                {statusList.map(s=><th key={s} style={{padding:"6px 8px",textAlign:"center",fontWeight:700,color:STATUS_COL[s],borderBottom:"1px solid #e0eaf8",whiteSpace:"nowrap"}}>{s}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {allMembers.map(nm=>(
+                <tr key={nm} style={{borderBottom:"1px solid #f1f5f9"}}>
+                  <td style={{padding:"6px 10px",fontWeight:700,color:"#1e3a8a"}}>{nm}</td>
+                  {statusList.map(s=>(
+                    <td key={s} style={{padding:"6px 8px",textAlign:"center",color:STATUS_COL[s],fontWeight:rekapBulan[nm]?.[s]>0?800:400}}>
+                      {rekapBulan[nm]?.[s]||0}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── USER / AUTH DATA ─────────────────────────────────────────────────────────
 // PIN default per anggota (4 digit). Admin PIN: 0000
 const ALL_MEMBERS = Object.entries(REGU).flatMap(([regu, names]) =>
@@ -1432,7 +1737,7 @@ function LoginScreen({ onLogin, userPins }) {
         <div style={{ fontSize: 22, fontWeight: 900, color: "#fff", letterSpacing: 2 }}>SIPAMDAL</div>
         <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", letterSpacing: 1.5, marginTop: 3 }}>BBPKA II JATINANGOR</div>
         <div style={{ marginTop: 10, background: "rgba(255,255,255,.08)", borderRadius: 10, padding: "8px 16px", display: "inline-block" }}>
-          <div style={{ fontSize: 10, color: "rgba(255,255,255,.45)", letterSpacing: .5 }}>Sistem Informasi Pamdal</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,.45)", letterSpacing: .5 }}>Sistem Informasi Pengamanan Daerah</div>
           <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", marginTop: 3 }}>
             Dikembangkan oleh <span style={{ color: "#93c5fd", fontWeight: 700 }}>Rukman Abu Hamzah</span>
           </div>
@@ -1761,6 +2066,9 @@ function App() {
   const [patrols, setPatrols] = useData("pad_patrol", []);
   const [mutations, setMutations] = useData("pad_mut", []);
   const [standJaga, setStandJaga] = useData("pad_stand", []);
+  const [posRollingLog, setPosRollingLog] = useData("pad_posroll", []);
+  const [absen, setAbsen] = useData("pad_absen", {});
+  const [liburData, setLiburData] = useData("pad_libur", {});
   const [notif, setNotif] = useState(null);
 
   const toast = (msg, ok = true) => { setNotif({ msg, ok }); setTimeout(() => setNotif(null), 3000); };
@@ -1778,6 +2086,7 @@ function App() {
   const MORE_TABS = [
     { id: "pos", label: "Penempatan Pos", icon: "pos" },
     { id: "stand", label: "Stand Jaga", icon: "shield" },
+    { id: "absen", label: "Absensi", icon: "cal" },
     { id: "package", label: "Paket & Kurir", icon: "pkg" },
     { id: "guest", label: "Tamu & Asrama", icon: "ppl" },
     { id: "mutation", label: "Mutasi Laporan", icon: "file" },
@@ -1828,15 +2137,16 @@ function App() {
 
       {/* CONTENT */}
       <main style={{ flex: 1, padding: "14px 14px 0", overflowY: "auto" }}>
-        {tab === "dashboard" && <DashTab now={now} shift={shift} reguHari={reguHari} posAssign={posAssign} incidents={incidents} packages={packages} guests={guests} patrols={patrols} standJaga={standJaga} mutations={mutations} setTab={setTab} canEdit={canEdit} />}
-        {tab === "jadwal" && <JadwalTab now={now} />}
-        {tab === "pos" && <PosTab reguHari={reguHari} posAssign={posAssign} setPosAssign={setPosAssign} toast={toast} canEdit={canEdit} />}
+        {tab === "dashboard" && <DashTab now={now} shift={shift} reguHari={reguHari} posAssign={posAssign} incidents={incidents} packages={packages} guests={guests} patrols={patrols} standJaga={standJaga} mutations={mutations} posRollingLog={posRollingLog} liburData={liburData} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} />}
+        {tab === "jadwal" && <JadwalTab now={now} liburData={liburData} isAdmin={isAdmin} setTab={setTab} />}
+        {tab === "pos" && <PosTab reguHari={reguHari} posAssign={posAssign} setPosAssign={setPosAssign} posRollingLog={posRollingLog} setPosRollingLog={setPosRollingLog} toast={toast} canEdit={canEdit} isAdmin={isAdmin} />}
         {tab === "stand" && <StandTab standJaga={standJaga} setStandJaga={setStandJaga} posAssign={posAssign} reguHari={reguHari} toast={toast} canEdit={canEdit} />}
-        {tab === "patrol" && <PatrolTab posAssign={posAssign} patrols={patrols} setPatrols={setPatrols} toast={toast} canEdit={canEdit} />}
+        {tab === "patrol" && <PatrolTab posAssign={posAssign} patrols={patrols} setPatrols={setPatrols} toast={toast} canEdit={canEdit} isAdmin={isAdmin} />}
         {tab === "incident" && <IncTab incidents={incidents} setIncidents={setIncidents} posAssign={posAssign} toast={toast} canEdit={canEdit} />}
         {tab === "package" && <PkgTab packages={packages} setPackages={setPackages} toast={toast} canEdit={canEdit} />}
         {tab === "guest" && <GuestTab guests={guests} setGuests={setGuests} toast={toast} canEdit={canEdit} />}
-        {tab === "mutation" && <MutTab mutations={mutations} setMutations={setMutations} reguHari={reguHari} toast={toast} canEdit={canEdit} patrols={patrols} incidents={incidents} packages={packages} guests={guests} currentUser={currentUser} rollings={rollings} standJaga={standJaga} />}
+        {tab === "mutation" && <MutTab mutations={mutations} setMutations={setMutations} reguHari={reguHari} toast={toast} canEdit={canEdit} patrols={patrols} incidents={incidents} packages={packages} guests={guests} currentUser={currentUser} standJaga={standJaga} />}
+        {tab === "absen" && <AbsenTab absen={absen} setAbsen={setAbsen} liburData={liburData} setLiburData={setLiburData} reguHari={reguHari} toast={toast} canEdit={canEdit} isAdmin={isAdmin} now={now} />}
         {tab === "profile" && <ProfileTab currentUser={currentUser} patrols={patrols} standJaga={standJaga} incidents={incidents} mutations={mutations} onLogout={handleLogout} toast={toast} userPins={userPins} setUserPins={setUserPins} />}
         {tab === "members" && <AdminMemberTab patrols={patrols} standJaga={standJaga} incidents={incidents} mutations={mutations} />}
       </main>
