@@ -143,7 +143,19 @@ function useFS(key, init) {
     const fb = window.__FB;
     if (!fb) return;
     const { db, doc, setDoc } = fb;
-    setDoc(doc(db, "sipamdal", key), { items: x }).catch(()=>{});
+    // Strip foto base64 sebelum kirim ke Firestore agar tidak melebihi batas 1MB
+    let xForDB = x;
+    if (Array.isArray(x)) {
+      xForDB = x.map(item => {
+        if (item && item.photo && item.photo.length > 100) {
+          return {...item, photo: "[foto-lokal]"};
+        }
+        return item;
+      });
+    }
+    setDoc(doc(db, "sipamdal", key), { items: xForDB }).catch(err => {
+      console.error("Firebase save error:", key, err.code, err.message);
+    });
   };
 
   return [v, set];
@@ -151,6 +163,22 @@ function useFS(key, init) {
 
 // Gunakan useFS untuk semua data kolaboratif
 const useData = useFS;
+
+// Kompres foto agar tidak melebihi batas Firestore (1MB)
+function kompressFoto(dataUrl, maxW=800, quality=0.6) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ratio = Math.min(1, maxW / img.width);
+      canvas.width = img.width * ratio;
+      canvas.height = img.height * ratio;
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.src = dataUrl;
+  });
+}
 const fmtDT = (d) => new Date(d).toLocaleString("id-ID",{dateStyle:"short",timeStyle:"short"});
 const fmtT  = (d) => new Date(d).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
 const fmtDate = (d) => new Date(d).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
@@ -709,7 +737,7 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit}) {
 
   const onScan=(area)=>{ setScanOpen(false); const pos=getPos(area); setConfirm({area,pos:pos||"—"}); setOfficer(posAssign[pos]?.join(", ")||""); setNotes(""); setPhoto(null); };
   const doP=()=>{ setPatrols([...patrols,{id:Date.now(),ts:Date.now(),pos:confirm.pos,officer:officer||"—",areas:[confirm.area],notes,photo,qrScan:true}]); setConfirm(null); toast(`Patroli ${confirm.area} dicatat!`); };
-  const handlePhoto=(e)=>{ const file=e.target.files[0]; if(!file) return; const r=new FileReader(); r.onload=()=>setPhoto(r.result); r.readAsDataURL(file); };
+  const handlePhoto=(e)=>{ const file=e.target.files[0]; if(!file) return; const r=new FileReader(); r.onload=()=>{ kompressFoto(r.result,800,0.5).then(compressed=>setPhoto(compressed)); }; r.readAsDataURL(file); };
   const removePhoto=()=>{ setPhoto(null); if(fileRef.current) fileRef.current.value=""; };
 
   const todP=patrols.filter(p=>new Date(p.ts).toDateString()===new Date().toDateString());
@@ -1265,7 +1293,7 @@ function LoginScreen({ onLogin, userPins }) {
         <div style={{ fontSize: 22, fontWeight: 900, color: "#fff", letterSpacing: 2 }}>SIPAMDAL</div>
         <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", letterSpacing: 1.5, marginTop: 3 }}>BBPKA II JATINANGOR</div>
         <div style={{ marginTop: 10, background: "rgba(255,255,255,.08)", borderRadius: 10, padding: "8px 16px", display: "inline-block" }}>
-          <div style={{ fontSize: 10, color: "rgba(255,255,255,.45)", letterSpacing: .5 }}>Sistem Informasi Pamdal</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,.45)", letterSpacing: .5 }}>Sistem Informasi Pengamanan Daerah</div>
           <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", marginTop: 3 }}>
             Dikembangkan oleh <span style={{ color: "#93c5fd", fontWeight: 700 }}>Rukman Abu Hamzah</span>
           </div>
