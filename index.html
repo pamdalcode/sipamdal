@@ -417,7 +417,7 @@ function ReadOnlyBanner({reguHari}) {
     </div>
   );
 }
-function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols,standJaga,mutations,posRollingLog,liburData,setTab,canEdit,isAdmin}) {
+function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols,standJaga,mutations,posRollingLog,liburData,setLiburData,setTab,canEdit,isAdmin}) {
   const pending=packages.filter(p=>p.status==="Belum Diambil").length;
   const staying=guests.filter(g=>g.status==="Masih Ada").length;
   const todP=patrols.filter(p=>new Date(p.ts).toDateString()===now.toDateString()).length;
@@ -502,31 +502,21 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
           ))}
         </div>
       )}
-      {/* Libur tambahan hari ini — manual dari admin */}
+      {/* Libur tambahan hari ini — tap untuk setting */}
       {(()=>{
         const todayKey = now.toISOString().slice(0,10);
         const liburHariIni = liburData?.[todayKey] || [];
         if(!isHariLibur(now) && liburHariIni.length===0) return null;
         const jenis = HARI_MERAH.has(todayKey)?"📅 Libur Nasional / Hari Merah":now.getDay()===0?"📅 Hari Minggu":"📅 Hari Sabtu";
         return (
-          <div style={{background:"linear-gradient(135deg,#fef3c7,#fde68a)",border:"1.5px solid #fbbf24",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
-            <div style={{fontSize:12,fontWeight:800,color:"#92400e",marginBottom:4}}>🌴 Hari Libur {jenis}</div>
-            {liburHariIni.length>0?(
-              <>
-                <div style={{fontSize:11,color:"#78350f",marginBottom:6}}>Anggota berhak libur tambahan hari ini:</div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:6}}>
-                  {liburHariIni.map(nm=>(
-                    <div key={nm} style={{background:"rgba(255,255,255,.65)",borderRadius:8,padding:"5px 12px",fontSize:12.5,fontWeight:800,color:"#92400e"}}>🏖 {nm}</div>
-                  ))}
-                </div>
-              </>
-            ):(
-              <div style={{fontSize:11,color:"#b45309",marginTop:4}}>
-                Belum ada anggota yang ditetapkan libur hari ini.
-                {isAdmin&&<span style={{color:"#92400e",fontWeight:700}}> Admin dapat menetapkan di menu Absen.</span>}
-              </div>
-            )}
-          </div>
+          <LiburBanner
+            jenis={jenis}
+            liburHariIni={liburHariIni}
+            todayKey={todayKey}
+            liburData={liburData}
+            setLiburData={setLiburData}
+            isAdmin={isAdmin}
+          />
         );
       })()}
 
@@ -1637,7 +1627,7 @@ function AbsenTab({absen,setAbsen,liburData,setLiburData,reguHari,toast,canEdit,
                   {!st&&<div style={{fontSize:10.5,color:"#9ca3af"}}>Belum diabsen</div>}
                 </div>
                 {/* Tombol libur tambahan — admin only */}
-                {isAdmin&&isHarilibur&&(
+                {isAdmin&&(
                   <button onClick={()=>toggleLiburTambahan(nm)} style={{background:isLiburTambahan?"#fef9c3":"#f8faff",border:`1px solid ${isLiburTambahan?"#fbbf24":"#dbeafe"}`,borderRadius:7,padding:"4px 8px",fontSize:10,color:isLiburTambahan?"#92400e":"#6b7280",fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                     {isLiburTambahan?"🌴 Libur +":"+ Libur"}
                   </button>
@@ -1656,6 +1646,45 @@ function AbsenTab({absen,setAbsen,liburData,setLiburData,reguHari,toast,canEdit,
           );
         })}
       </div>
+
+      {/* Libur tambahan anggota lain (di luar regu jaga hari ini) */}
+      {isAdmin&&(
+        <div style={{background:"#fff",border:"1.5px solid #fcd34d",borderRadius:12,overflow:"hidden",marginBottom:14}}>
+          <div style={{background:"#d97706",padding:"8px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{fontSize:11,fontWeight:800,color:"#fff"}}>🏖 Libur Tambahan — Semua Anggota</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,.8)"}}>{liburTambahanHari.length} ditetapkan</div>
+          </div>
+          <div style={{padding:"10px 14px"}}>
+            <div style={{fontSize:10.5,color:"#92400e",marginBottom:10}}>Centang anggota yang mendapat jatah libur tambahan pada tanggal ini (semua regu)</div>
+            {[1,2,3].map(rg=>(
+              <div key={rg} style={{marginBottom:10}}>
+                <div style={{fontSize:10,fontWeight:800,color:"#d97706",marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Regu {rg}</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {(REGU[rg]||[]).map(nm=>{
+                    const isL=liburTambahanHari.includes(nm);
+                    return (
+                      <button key={nm} onClick={()=>toggleLiburTambahan(nm)} style={{
+                        padding:"5px 11px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                        background:isL?"#fef9c3":"#f8faff",
+                        border:`1.5px solid ${isL?"#fbbf24":"#e0eaf8"}`,
+                        color:isL?"#92400e":"#6b7280",
+                        display:"flex",alignItems:"center",gap:5
+                      }}>
+                        {isL?"🌴":"○"} {nm}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            {liburTambahanHari.length>0&&(
+              <div style={{background:"#fef9c3",border:"1px solid #fbbf24",borderRadius:8,padding:"8px 12px",marginTop:8,fontSize:11,color:"#92400e"}}>
+                <b>Ditetapkan libur ({liburTambahanHari.length}):</b> {liburTambahanHari.join(", ")}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Rekap bulan ini */}
       <div style={{background:"#fff",border:"1.5px solid #dbeafe",borderRadius:12,overflow:"hidden"}}>
@@ -1698,6 +1727,152 @@ const DEFAULT_PINS = {};
 ALL_MEMBERS.forEach(m => { DEFAULT_PINS[m.name] = "1234"; });
 
 // ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
+// ─── REGU ACCORDION (login) ──────────────────────────────────────────────────
+function ReguAccordion({reguColors, onSelect}) {
+  const [openRegu, setOpenRegu] = useState(null);
+  return (
+    <div style={{width:"100%"}}>
+      {[1,2,3].map(r=>{
+        const isOpen = openRegu===r;
+        const col = reguColors[r];
+        return (
+          <div key={r} style={{marginBottom:10,borderRadius:14,overflow:"hidden",border:`1.5px solid ${col}60`}}>
+            {/* Header folder */}
+            <button
+              onClick={()=>setOpenRegu(isOpen?null:r)}
+              style={{
+                width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",
+                padding:"13px 16px",background:isOpen?`${col}30`:"rgba(255,255,255,.08)",
+                border:"none",cursor:"pointer",fontFamily:"inherit",
+              }}
+            >
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:32,height:32,borderRadius:9,background:col,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>
+                  {r}
+                </div>
+                <div style={{textAlign:"left"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>REGU {r}</div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,.55)"}}>
+                    {REGU[r].join(" · ")}
+                  </div>
+                </div>
+              </div>
+              <div style={{fontSize:18,color:"rgba(255,255,255,.6)",transition:"transform .2s",transform:isOpen?"rotate(90deg)":"rotate(0deg)"}}>›</div>
+            </button>
+            {/* Isi nama */}
+            {isOpen&&(
+              <div style={{padding:"10px 12px",background:"rgba(0,0,0,.15)",display:"flex",flexWrap:"wrap",gap:8}}>
+                {REGU[r].map(name=>(
+                  <button
+                    key={name}
+                    onClick={()=>onSelect({name,regu:r})}
+                    style={{
+                      flex:"1 1 auto",minWidth:100,
+                      background:"rgba(255,255,255,.15)",
+                      border:`1.5px solid ${col}80`,
+                      borderRadius:10,padding:"10px 14px",
+                      color:"#fff",fontSize:13,fontWeight:700,
+                      cursor:"pointer",fontFamily:"inherit",
+                    }}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── LIBUR BANNER (dashboard, tap → modal setting jatah libur) ──────────────
+function LiburBanner({jenis, liburHariIni, todayKey, liburData, setLiburData, isAdmin}) {
+  const [open, setOpen] = useState(false);
+
+  const toggle = (nama) => {
+    if(!isAdmin){alert("Hanya Admin yang bisa menetapkan jatah libur");return;}
+    const cur = liburData[todayKey]||[];
+    const next = cur.includes(nama)?cur.filter(x=>x!==nama):[...cur,nama];
+    setLiburData({...liburData,[todayKey]:next});
+  };
+
+  return (
+    <>
+      {/* Banner — bisa di-tap siapa saja */}
+      <div
+        onClick={()=>setOpen(true)}
+        style={{background:"linear-gradient(135deg,#fef3c7,#fde68a)",border:"1.5px solid #fbbf24",borderRadius:12,padding:"12px 14px",marginBottom:14,cursor:"pointer"}}
+      >
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div style={{fontSize:12,fontWeight:800,color:"#92400e",marginBottom:4}}>🌴 Hari Libur {jenis}</div>
+          <span style={{fontSize:10,color:"#b45309",fontWeight:700,background:"rgba(255,255,255,.5)",borderRadius:6,padding:"2px 7px"}}>
+            {isAdmin?"⚙ Setting":"👁 Lihat"}
+          </span>
+        </div>
+        {liburHariIni.length>0?(
+          <>
+            <div style={{fontSize:11,color:"#78350f",marginBottom:6}}>Jatah libur ditetapkan untuk:</div>
+            <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+              {liburHariIni.map(nm=>(
+                <div key={nm} style={{background:"rgba(255,255,255,.65)",borderRadius:8,padding:"4px 11px",fontSize:12,fontWeight:800,color:"#92400e"}}>🏖 {nm}</div>
+              ))}
+            </div>
+          </>
+        ):(
+          <div style={{fontSize:11,color:"#b45309",marginTop:2}}>
+            {isAdmin?"Tap untuk tetapkan siapa yang dapat jatah libur hari ini.":"Belum ada anggota yang ditetapkan libur hari ini."}
+          </div>
+        )}
+      </div>
+
+      {/* Modal setting jatah libur */}
+      <Modal open={open} onClose={()=>setOpen(false)} title={"🌴 Jatah Libur — " + new Date(todayKey).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long"})}>
+        <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>
+          {isAdmin?"Pilih anggota yang mendapat jatah libur hari ini. Tap untuk toggle.":"Daftar anggota yang mendapat jatah libur hari ini."}
+        </div>
+        {[1,2,3].map(rg=>{
+          const col = {1:"#1d4ed8",2:"#059669",3:"#7c3aed"}[rg];
+          return (
+            <div key={rg} style={{marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:800,color:col,marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>
+                Regu {rg}
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                {(REGU[rg]||[]).map(nm=>{
+                  const isL = liburHariIni.includes(nm);
+                  return (
+                    <button key={nm} onClick={()=>toggle(nm)} style={{
+                      padding:"8px 14px",borderRadius:9,fontSize:12,fontWeight:700,
+                      cursor:isAdmin?"pointer":"default",fontFamily:"inherit",
+                      background:isL?"#fef9c3":"#f8faff",
+                      border:`1.5px solid ${isL?"#fbbf24":col+"30"}`,
+                      color:isL?"#92400e":col,
+                      display:"flex",alignItems:"center",gap:6,
+                      minWidth:90,justifyContent:"center",
+                    }}>
+                      {isL?"🌴":"○"} {nm}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+        {liburHariIni.length>0&&(
+          <div style={{background:"#fef9c3",border:"1px solid #fbbf24",borderRadius:9,padding:"9px 13px",marginTop:6,fontSize:11.5,color:"#92400e"}}>
+            <b>Total libur: {liburHariIni.length} anggota</b> — {liburHariIni.join(", ")}
+          </div>
+        )}
+        <div style={{marginTop:14}}>
+          <Btn onClick={()=>setOpen(false)} color="#1d4ed8" size="lg" full>Tutup</Btn>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
 function LoginScreen({ onLogin, userPins }) {
   const [step, setStep] = useState("select"); // select | pin
   const [selected, setSelected] = useState(null);
@@ -1736,31 +1911,15 @@ function LoginScreen({ onLogin, userPins }) {
         </div>
         <div style={{ fontSize: 22, fontWeight: 900, color: "#fff", letterSpacing: 2 }}>SIPAMDAL</div>
         <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", letterSpacing: 1.5, marginTop: 3 }}>BBPKA II JATINANGOR</div>
-        <div style={{ marginTop: 10, background: "rgba(255,255,255,.08)", borderRadius: 10, padding: "8px 16px", display: "inline-block" }}>
-          <div style={{ fontSize: 10, color: "rgba(255,255,255,.45)", letterSpacing: .5 }}>Sistem Informasi Pamdal</div>
-          <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", marginTop: 3 }}>
-            Dikembangkan oleh <span style={{ color: "#93c5fd", fontWeight: 700 }}>Rukman Abu Hamzah</span>
-          </div>
+        <div style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,.5)", letterSpacing: .5 }}>
+          Dikembangkan oleh <span style={{ color: "#93c5fd", fontWeight: 700 }}>Rukman Abu Hamzah</span>
         </div>
       </div>
 
       {step === "select" && (
         <div style={{ width: "100%", maxWidth: 380 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,.8)", marginBottom: 14, textAlign: "center" }}>Pilih Nama Anggota</div>
-          {[1, 2, 3].map(r => (
-            <div key={r} style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,.5)", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 7, paddingLeft: 4 }}>
-                Regu {r} — {REGU[r].join(", ")}
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {REGU[r].map(name => (
-                  <button key={name} onClick={() => handleSelect({ name, regu: r })} style={{ background: "rgba(255,255,255,.12)", border: `1.5px solid ${reguColors[r]}80`, borderRadius: 10, padding: "10px 16px", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "all .15s", flex: "1 1 auto", minWidth: 90 }}>
-                    {name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
+          <ReguAccordion reguColors={reguColors} onSelect={handleSelect} />
           <div style={{ borderTop: "1px solid rgba(255,255,255,.12)", marginTop: 18, paddingTop: 14, textAlign: "center" }}>
             <button onClick={handleAdminSelect} style={{ background: "rgba(255,255,255,.08)", border: "1.5px solid rgba(255,255,255,.2)", borderRadius: 10, padding: "10px 24px", color: "rgba(255,255,255,.7)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
               🔐 Masuk sebagai Admin
@@ -2029,9 +2188,131 @@ function AdminMemberTab({ patrols, standJaga, incidents, mutations }) {
 }
 
 // ─── BOTTOM NAV (mobile) ───────────────────────────────────────────────────────
+// ─── INSTRUKSI PIMPINAN ──────────────────────────────────────────────────────
+function InstruksiTab({instruksi, setInstruksi, toast, isAdmin}) {
+  const [open, setOpen] = useState(false);
+  const [fm, setFm] = useState({judul:"", isi:"", prioritas:"Normal", targetRegu:"Semua"});
+  const f = (k,v) => setFm(p=>({...p,[k]:v}));
+
+  const PRI_COL = {Penting:"#dc2626", Normal:"#1d4ed8", Info:"#059669"};
+  const PRI_BG  = {Penting:"#fef2f2", Normal:"#eff6ff", Info:"#f0fdf4"};
+
+  const submit = () => {
+    if(!fm.judul||!fm.isi){toast("Judul & isi wajib diisi!",false);return;}
+    const newItem = {...fm, id:Date.now(), ts:Date.now(), aktif:true};
+    setInstruksi([newItem,...instruksi]);
+    setFm({judul:"",isi:"",prioritas:"Normal",targetRegu:"Semua"});
+    setOpen(false);
+    toast("Instruksi berhasil dikirim ke semua anggota!");
+  };
+
+  const toggleAktif = (id) => {
+    setInstruksi(instruksi.map(i => i.id===id ? {...i, aktif:!i.aktif} : i));
+  };
+
+  const hapus = (id) => {
+    if(!window.confirm("Hapus instruksi ini?")) return;
+    setInstruksi(instruksi.filter(i => i.id!==id));
+    toast("Instruksi dihapus");
+  };
+
+  const aktifList = instruksi.filter(i => i.aktif);
+  const arsipList = instruksi.filter(i => !i.aktif);
+
+  return (
+    <div>
+      <PH title="Instruksi Pimpinan" sub="Perintah & arahan dari pimpinan untuk seluruh anggota pamdal"
+        action={isAdmin&&<Btn onClick={()=>setOpen(true)} color="#dc2626"><IC n="plus" s={13}/> Buat Instruksi</Btn>}
+      />
+
+      {/* Banner untuk anggota */}
+      {!isAdmin&&aktifList.length===0&&(
+        <div style={{background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:12,padding:"16px",textAlign:"center",color:"#059669",fontSize:13,fontWeight:700}}>
+          ✅ Tidak ada instruksi khusus saat ini
+        </div>
+      )}
+
+      {/* Instruksi aktif */}
+      {aktifList.length>0&&(
+        <div style={{marginBottom:16}}>
+          {aktifList.map(ins=>(
+            <div key={ins.id} style={{background:PRI_BG[ins.prioritas],border:`2px solid ${PRI_COL[ins.prioritas]}40`,borderRadius:14,padding:"14px 16px",marginBottom:12,position:"relative"}}>
+              <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:PRI_COL[ins.prioritas],borderRadius:"14px 14px 0 0"}}/>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{background:PRI_COL[ins.prioritas],color:"#fff",borderRadius:6,padding:"2px 9px",fontSize:10.5,fontWeight:800}}>
+                    {ins.prioritas==="Penting"?"🚨":ins.prioritas==="Info"?"ℹ️":"📋"} {ins.prioritas}
+                  </span>
+                  {ins.targetRegu!=="Semua"&&<Bdg text={"Regu "+ins.targetRegu} color="#6b7280"/>}
+                  <span style={{fontSize:10,color:"#9ca3af"}}>{fmtDT(ins.ts)}</span>
+                </div>
+                {isAdmin&&(
+                  <div style={{display:"flex",gap:5}}>
+                    <button onClick={()=>toggleAktif(ins.id)} style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#d97706",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Arsipkan</button>
+                    <button onClick={()=>hapus(ins.id)} style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#dc2626",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Hapus</button>
+                  </div>
+                )}
+              </div>
+              <div style={{fontSize:14,fontWeight:900,color:"#1e3a8a",marginBottom:6}}>{ins.judul}</div>
+              <div style={{fontSize:12.5,color:"#374151",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{ins.isi}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Arsip - hanya admin */}
+      {isAdmin&&arsipList.length>0&&(
+        <div>
+          <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",marginBottom:8}}>📁 Arsip ({arsipList.length})</div>
+          {arsipList.map(ins=>(
+            <div key={ins.id} style={{background:"#f8faff",border:"1.5px solid #e0eaf8",borderRadius:11,padding:"10px 14px",marginBottom:8,opacity:.7}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6}}>
+                <div>
+                  <span style={{fontSize:10,color:"#9ca3af",fontWeight:700}}>{ins.prioritas} · {fmtDT(ins.ts)}</span>
+                  <div style={{fontSize:12.5,fontWeight:700,color:"#6b7280"}}>{ins.judul}</div>
+                </div>
+                <div style={{display:"flex",gap:5}}>
+                  <button onClick={()=>toggleAktif(ins.id)} style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#1d4ed8",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Aktifkan</button>
+                  <button onClick={()=>hapus(ins.id)} style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#dc2626",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Hapus</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal buat instruksi */}
+      <Modal open={open} onClose={()=>setOpen(false)} title="Buat Instruksi Pimpinan">
+        <div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:9,padding:"9px 13px",marginBottom:14,fontSize:11.5,color:"#b91c1c"}}>
+          ⚠️ Instruksi akan langsung terlihat oleh semua anggota yang login
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <Inp label="Prioritas" value={fm.prioritas} onChange={e=>f("prioritas",e.target.value)} as="select" half>
+            <option>Penting</option>
+            <option>Normal</option>
+            <option>Info</option>
+          </Inp>
+          <Inp label="Target" value={fm.targetRegu} onChange={e=>f("targetRegu",e.target.value)} as="select" half>
+            <option>Semua</option>
+            <option value="1">Regu 1</option>
+            <option value="2">Regu 2</option>
+            <option value="3">Regu 3</option>
+          </Inp>
+        </div>
+        <Inp label="Judul Instruksi" value={fm.judul} onChange={e=>f("judul",e.target.value)} placeholder="Contoh: Siaga penuh malam ini"/>
+        <Inp label="Isi Instruksi" value={fm.isi} onChange={e=>f("isi",e.target.value)} as="textarea" placeholder="Detail perintah / arahan dari pimpinan..."/>
+        <div style={{display:"flex",gap:8}}>
+          <Btn onClick={submit} color="#dc2626" size="lg" full>🚨 Kirim Instruksi</Btn>
+          <Btn onClick={()=>setOpen(false)} color="#6b7280" variant="outline">Batal</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 const NAV_TABS = [
   {id:"dashboard",label:"Dashboard",icon:"home"},
-  {id:"jadwal",label:"Jadwal",icon:"cal"},
+  {id:"instruksi",label:"Instruksi",icon:"alert"},
   {id:"patrol",label:"Patroli",icon:"qr"},
   {id:"incident",label:"Insiden",icon:"alert"},
   {id:"more",label:"Lainnya",icon:"menu"},
@@ -2039,7 +2320,7 @@ const NAV_TABS = [
 
 const NAV_TABS_ADMIN = [
   {id:"dashboard",label:"Dashboard",icon:"home"},
-  {id:"jadwal",label:"Jadwal",icon:"cal"},
+  {id:"instruksi",label:"Instruksi",icon:"shield"},
   {id:"members",label:"Anggota",icon:"ppl"},
   {id:"incident",label:"Insiden",icon:"alert"},
   {id:"more",label:"Lainnya",icon:"menu"},
@@ -2069,6 +2350,7 @@ function App() {
   const [posRollingLog, setPosRollingLog] = useData("pad_posroll", []);
   const [absen, setAbsen] = useData("pad_absen", {});
   const [liburData, setLiburData] = useData("pad_libur", {});
+  const [instruksi, setInstruksi] = useData("pad_instruksi", []);
   const [notif, setNotif] = useState(null);
 
   const toast = (msg, ok = true) => { setNotif({ msg, ok }); setTimeout(() => setNotif(null), 3000); };
@@ -2084,6 +2366,7 @@ function App() {
   const ACTIVE_NAV = isAdmin ? NAV_TABS_ADMIN : NAV_TABS;
 
   const MORE_TABS = [
+    { id: "instruksi", label: "Instruksi Pimpinan", icon: "shield" },
     { id: "pos", label: "Penempatan Pos", icon: "pos" },
     { id: "stand", label: "Stand Jaga", icon: "shield" },
     { id: "absen", label: "Absensi", icon: "cal" },
@@ -2095,6 +2378,7 @@ function App() {
 
   const pending = packages.filter(p => p.status === "Belum Diambil").length;
   const activeI = incidents.filter(i => i.status !== "Selesai").length;
+  const instruksiAktif = instruksi.filter(i => i.aktif && (i.targetRegu==="Semua"||String(i.targetRegu)===String(currentUser?.regu))).length;
 
   const goTab = (t) => { setTab(t); setMoreOpen(false); };
 
@@ -2108,6 +2392,7 @@ function App() {
         </div>
         <div style={{ flex: 1 }} />
         {pending > 0 && <div style={{ background: "#fbbf24", color: "#78350f", borderRadius: 20, padding: "2px 8px", fontSize: 10.5, fontWeight: 800 }}>📦{pending}</div>}
+        {instruksiAktif > 0 && <div style={{ background: "#dc2626", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10.5, fontWeight: 800, cursor:"pointer" }} onClick={()=>setTab("instruksi")}>📋{instruksiAktif}</div>}
         {activeI > 0 && <div style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10.5, fontWeight: 800 }}>⚠{activeI}</div>}
         <div style={{ textAlign: "right", cursor: "pointer" }} onClick={() => goTab("profile")}>
           <div style={{ fontSize: 11, fontWeight: 800, color: "#fff" }}>{currentUser.name}</div>
@@ -2137,7 +2422,7 @@ function App() {
 
       {/* CONTENT */}
       <main style={{ flex: 1, padding: "14px 14px 0", overflowY: "auto" }}>
-        {tab === "dashboard" && <DashTab now={now} shift={shift} reguHari={reguHari} posAssign={posAssign} incidents={incidents} packages={packages} guests={guests} patrols={patrols} standJaga={standJaga} mutations={mutations} posRollingLog={posRollingLog} liburData={liburData} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} />}
+        {tab === "dashboard" && <DashTab now={now} shift={shift} reguHari={reguHari} posAssign={posAssign} incidents={incidents} packages={packages} guests={guests} patrols={patrols} standJaga={standJaga} mutations={mutations} posRollingLog={posRollingLog} liburData={liburData} setLiburData={setLiburData} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} />}
         {tab === "jadwal" && <JadwalTab now={now} liburData={liburData} isAdmin={isAdmin} setTab={setTab} />}
         {tab === "pos" && <PosTab reguHari={reguHari} posAssign={posAssign} setPosAssign={setPosAssign} posRollingLog={posRollingLog} setPosRollingLog={setPosRollingLog} toast={toast} canEdit={canEdit} isAdmin={isAdmin} />}
         {tab === "stand" && <StandTab standJaga={standJaga} setStandJaga={setStandJaga} posAssign={posAssign} reguHari={reguHari} toast={toast} canEdit={canEdit} />}
@@ -2147,6 +2432,7 @@ function App() {
         {tab === "guest" && <GuestTab guests={guests} setGuests={setGuests} toast={toast} canEdit={canEdit} />}
         {tab === "mutation" && <MutTab mutations={mutations} setMutations={setMutations} reguHari={reguHari} toast={toast} canEdit={canEdit} patrols={patrols} incidents={incidents} packages={packages} guests={guests} currentUser={currentUser} standJaga={standJaga} />}
         {tab === "absen" && <AbsenTab absen={absen} setAbsen={setAbsen} liburData={liburData} setLiburData={setLiburData} reguHari={reguHari} toast={toast} canEdit={canEdit} isAdmin={isAdmin} now={now} />}
+        {tab === "instruksi" && <InstruksiTab instruksi={instruksi} setInstruksi={setInstruksi} toast={toast} isAdmin={isAdmin} />}
         {tab === "profile" && <ProfileTab currentUser={currentUser} patrols={patrols} standJaga={standJaga} incidents={incidents} mutations={mutations} onLogout={handleLogout} toast={toast} userPins={userPins} setUserPins={setUserPins} />}
         {tab === "members" && <AdminMemberTab patrols={patrols} standJaga={standJaga} incidents={incidents} mutations={mutations} />}
       </main>
