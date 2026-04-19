@@ -3,13 +3,41 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <meta name="theme-color" content="#1e3a8a"/>
+  <!-- PWA: Theme & display -->
+  <meta name="theme-color" content="#1e3a8a" media="(prefers-color-scheme: light)"/>
+  <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)"/>
+  <meta name="color-scheme" content="light dark"/>
+
+  <!-- PWA: Apple iOS -->
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="SIPAMDAL"/>
-  <meta name="mobile-web-app-capable" content="yes"/>
-  <link rel="manifest" href="./manifest.json"/>
   <link rel="apple-touch-icon" href="./icon-192.png"/>
+  <link rel="apple-touch-icon" sizes="152x152" href="./icon-152.png"/>
+  <link rel="apple-touch-icon" sizes="144x144" href="./icon-144.png"/>
+  <link rel="apple-touch-icon" sizes="128x128" href="./icon-128.png"/>
+  <link rel="apple-touch-startup-image" href="./icon-512.png"/>
+
+  <!-- PWA: Android / Chrome -->
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="application-name" content="SIPAMDAL"/>
+
+  <!-- PWA: General -->
+  <meta name="description" content="Sistem Informasi Pengamanan Dalam BBPKA II Jatinangor"/>
+  <meta name="keywords" content="SIPAMDAL, BBPKA, Jatinangor, pamdal, patroli, keamanan"/>
+  <meta name="author" content="Rukman Abu Hamzah"/>
+  <meta name="robots" content="noindex, nofollow"/>
+
+  <!-- Open Graph (share preview) -->
+  <meta property="og:title" content="SIPAMDAL — BBPKA II Jatinangor"/>
+  <meta property="og:description" content="Sistem Informasi Pengamanan Dalam"/>
+  <meta property="og:image" content="./icon-512.png"/>
+  <meta property="og:type" content="website"/>
+
+  <!-- Manifest -->
+  <link rel="manifest" href="./manifest.json"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="./icon-48.png"/>
+  <link rel="icon" type="image/png" sizes="96x96" href="./icon-96.png"/>
   <title>SIPAMDAL – BBPKA II Jatinangor</title>
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}

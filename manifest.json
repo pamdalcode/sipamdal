@@ -4,36 +4,41 @@
   "description": "Sistem Informasi Pengamanan Dalam BBPKA II Jatinangor — Aplikasi operasional satuan pamdal: patroli QR, absensi, insiden, tamu, paket, mutasi shift, dan monitoring real-time.",
   "start_url": "./index.html",
   "scope": "./",
+  "id": "sipamdal-bbpka2-jatinangor",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui", "browser"],
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui", "browser"],
   "background_color": "#1e3a8a",
   "theme_color": "#1e3a8a",
   "orientation": "portrait-primary",
-  "lang": "id",
+  "lang": "id-ID",
   "dir": "ltr",
   "categories": ["security", "utilities", "productivity"],
   "prefer_related_applications": false,
+  "iarc_rating_id": "",
+  "edge_side_panel": { "preferred_width": 400 },
+  "handle_links": "preferred",
+  "launch_handler": { "client_mode": "navigate-existing" },
   "shortcuts": [
     {
       "name": "Dashboard",
       "short_name": "Dashboard",
-      "description": "Buka halaman dashboard",
+      "description": "Buka halaman dashboard utama",
       "url": "./index.html",
-      "icons": [{ "src": "icon-96.png", "sizes": "96x96" }]
+      "icons": [{ "src": "icon-96.png", "sizes": "96x96", "type": "image/png" }]
     },
     {
       "name": "Patroli QR",
       "short_name": "Patroli",
-      "description": "Scan QR patroli",
+      "description": "Langsung scan QR patroli",
       "url": "./index.html",
-      "icons": [{ "src": "icon-96.png", "sizes": "96x96" }]
+      "icons": [{ "src": "icon-96.png", "sizes": "96x96", "type": "image/png" }]
     },
     {
       "name": "Laporan Insiden",
       "short_name": "Insiden",
-      "description": "Laporan insiden",
+      "description": "Buat laporan insiden baru",
       "url": "./index.html",
-      "icons": [{ "src": "icon-96.png", "sizes": "96x96" }]
+      "icons": [{ "src": "icon-96.png", "sizes": "96x96", "type": "image/png" }]
     }
   ],
   "screenshots": [
@@ -41,14 +46,14 @@
       "src": "screenshot-1.png",
       "sizes": "390x844",
       "type": "image/png",
-      "platform": "narrow",
-      "label": "SIPAMDAL Dashboard"
+      "form_factor": "narrow",
+      "label": "SIPAMDAL Dashboard — Mobile"
     },
     {
       "src": "screenshot-2.png",
       "sizes": "1280x800",
       "type": "image/png",
-      "platform": "wide",
+      "form_factor": "wide",
       "label": "SIPAMDAL Desktop View"
     }
   ],
