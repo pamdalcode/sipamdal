@@ -6,7 +6,7 @@
   <!-- PWA: Theme & display -->
   <meta name="theme-color" content="#1e3a8a" media="(prefers-color-scheme: light)"/>
   <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)"/>
-  <meta name="color-scheme" content="light dark"/>
+  <meta name="color-scheme" content="light"/>
 
   <!-- PWA: Apple iOS -->
   <meta name="apple-mobile-web-app-capable" content="yes"/>
@@ -41,7 +41,7 @@
   <title>SIPAMDAL – BBPKA II Jatinangor</title>
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-    body{margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif;background:#eef3fb;overscroll-behavior:none;}
+    body{margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif;background:#eef3fb;overscroll-behavior:none;color:#000;}
     #root{min-height:100vh;}
     input,select,textarea,button{font-family:inherit;}
     ::-webkit-scrollbar{width:4px;height:4px;}
@@ -348,7 +348,7 @@ function Modal({open,onClose,title,children,wide,noPad}) {
   if(!open) return null;
   return (
     <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(15,30,70,.5)",backdropFilter:"blur(6px)",padding:12}}>
-      <div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:wide?720:500,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(30,58,138,.18)"}}>
+      <div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:wide?720:500,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(30,58,138,.18)",color:"#000"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 22px",borderBottom:"1.5px solid #e0eaf8"}}>
           <h3 style={{margin:0,fontSize:15,fontWeight:800,color:"#1e3a8a"}}>{title}</h3>
           <button onClick={onClose} style={{background:"#f0f5ff",border:"none",borderRadius:8,cursor:"pointer",padding:6,display:"flex"}}><IC n="x" s={17} c="#3b82f6"/></button>
@@ -992,7 +992,6 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin}) {
   const [photo,setPhoto]=useState(null);
   const [viewQR,setViewQR]=useState(null);
   const [viewPhoto,setViewPhoto]=useState(null);
-  const [activePos,setActivePos]=useState(POS_LIST[0]);
   const fileRef=useRef();
 
   const onScan=(area)=>{ setScanOpen(false); const pos=getPos(area); setConfirm({area,pos:pos||"—"}); setOfficer(posAssign[pos]?.join(", ")||""); setNotes(""); setPhoto(null); };
@@ -1001,31 +1000,27 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin}) {
   const removePhoto=()=>{ setPhoto(null); if(fileRef.current) fileRef.current.value=""; };
 
   const todP=patrols.filter(p=>new Date(p.ts).toDateString()===new Date().toDateString());
-  const areas=PATROL_AREAS[activePos]||[];
   return (
     <div>
       <PH title="Patroli QR" sub="Scan QR + foto kondisi lokasi sebagai bukti" action={canEdit&&<Btn onClick={()=>setScanOpen(true)} color="#059669"><IC n="cam" s={13}/> Scan QR</Btn>}/>
       {!canEdit&&<ReadOnlyBanner reguHari={getReguHari(new Date())}/>}
       <div style={{background:"#fff",border:"1.5px solid #dbeafe",borderRadius:12,marginBottom:14,overflow:"hidden"}}>
-        <div style={{display:"flex",borderBottom:"1.5px solid #e0eaf8",overflowX:"auto"}}>
-          {POS_LIST.map(p=>(
-            <button key={p} onClick={()=>setActivePos(p)} style={{padding:"8px 10px",fontSize:11,fontWeight:700,background:activePos===p?"#eff6ff":"none",borderBottom:activePos===p?`2.5px solid ${POS_COL[p]}`:"none",border:"none",cursor:"pointer",color:activePos===p?POS_COL[p]:"#6b7280",whiteSpace:"nowrap",fontFamily:"inherit"}}>{p}</button>
-          ))}
-        </div>
         <div style={{padding:12}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10}}>
-            {areas.map(area=>{
+            {ALL_AREAS.map(area=>{
+              const pos=getPos(area);
               const cnt=patrols.filter(p=>p.areas?.includes(area)).length;
               const last=patrols.filter(p=>p.areas?.includes(area)).at(-1);
               return (
                 <div key={area} style={{background:"#f8faff",border:"1.5px solid #dbeafe",borderRadius:10,padding:10,textAlign:"center"}}>
                   <div style={{display:"flex",justifyContent:"center",marginBottom:6}}><QRSvg value={encQR(area)} size={76}/></div>
                   <div style={{fontSize:10.5,fontWeight:800,color:"#1e3a8a",marginBottom:2}}>{area}</div>
+                  {pos&&<div style={{fontSize:9,color:POS_COL[pos]||"#6b7280",fontWeight:700,marginBottom:2}}>{pos}</div>}
                   <div style={{fontSize:10,color:"#6b7280"}}>{cnt}× scan</div>
                   {last&&<div style={{fontSize:10,color:"#059669",fontWeight:700}}>{fmtT(last.ts)}</div>}
                   {last?.photo&&<div style={{marginTop:4,fontSize:10,color:"#7c3aed",fontWeight:700}}>📷 Ada foto</div>}
                   <div style={{marginTop:6,display:"flex",gap:4,justifyContent:"center"}}>
-                    {canEdit&&<Btn onClick={()=>onScan(area)} color={POS_COL[activePos]} size="sm">Scan</Btn>}
+                    {canEdit&&<Btn onClick={()=>onScan(area)} color={POS_COL[pos]||"#059669"} size="sm">Scan</Btn>}
                     {isAdmin&&<Btn onClick={()=>setViewQR(area)} color="#6b7280" variant="outline" size="sm"><IC n="print" s={11}/></Btn>}
                   </div>
                 </div>
@@ -1303,18 +1298,21 @@ function GC({g,co,canEdit,onViewPhoto}) {
 
 // ─── MUTATION ─────────────────────────────────────────────────────────────────
 // Format cetak seperti buku laporan pamdal
-function MutPrint({m, onClose}) {
+function MutPrint({m, onClose, inventarisDaftar, inventarisCek}) {
   const anggota = REGU[m.fromRegu] || [];
-  const inventaris = [
-    {nama:"TV", jumlah:"1 unit"},
-    {nama:"Dispenser", jumlah:"1 unit"},
-    {nama:"Senter", jumlah:"2 unit"},
-    {nama:"APAR", jumlah:"1 unit"},
-    {nama:"Komputer", jumlah:"1 unit"},
-    {nama:"Police Line", jumlah:"1 unit"},
+  const todayKey = new Date(m.ts).toISOString().slice(0,10);
+  const cekHari = (inventarisCek||{})[todayKey] || {};
+  const inventaris = (inventarisDaftar && inventarisDaftar.length > 0) ? inventarisDaftar : [
+    {id:"inv1", nama:"TV", jumlah:"1 unit"},
+    {id:"inv2", nama:"Dispenser", jumlah:"1 unit"},
+    {id:"inv3", nama:"Senter", jumlah:"2 unit"},
+    {id:"inv4", nama:"APAR", jumlah:"1 unit"},
+    {id:"inv5", nama:"Komputer", jumlah:"1 unit"},
+    {id:"inv6", nama:"Police Line", jumlah:"1 unit"},
   ];
+  const STATUS_COLOR = {Lengkap:"#16a34a", Kurang:"#d97706", Rusak:"#dc2626"};
   return (
-    <div style={{fontFamily:"serif",background:"#fff",padding:"20px 22px",maxWidth:500,margin:"0 auto"}}>
+    <div style={{fontFamily:"serif",background:"#fff",padding:"20px 22px",maxWidth:500,margin:"0 auto",color:"#000"}}>
       {/* Header */}
       <div style={{textAlign:"center",borderBottom:"2px solid #000",paddingBottom:10,marginBottom:12}}>
         <div style={{fontSize:11,fontWeight:700}}>KEMENTERIAN DALAM NEGERI</div>
@@ -1331,7 +1329,7 @@ function MutPrint({m, onClose}) {
       <div style={{marginBottom:12}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
           <thead>
-            <tr style={{background:"#e5e7eb"}}>
+            <tr style={{background:"#e5e7eb",color:"#000"}}>
               <th style={{border:"1px solid #000",padding:"4px 6px",textAlign:"center",width:28}}>NO</th>
               <th style={{border:"1px solid #000",padding:"4px 6px",textAlign:"left"}}>Nama</th>
               <th style={{border:"1px solid #000",padding:"4px 6px",textAlign:"center",width:60}}>Jabatan</th>
@@ -1358,7 +1356,7 @@ function MutPrint({m, onClose}) {
         <div style={{fontSize:11,fontWeight:700,marginBottom:4}}>Inventaris Barang:</div>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
           <thead>
-            <tr style={{background:"#e5e7eb"}}>
+            <tr style={{background:"#e5e7eb",color:"#000"}}>
               <th style={{border:"1px solid #000",padding:"3px 6px",textAlign:"center",width:28}}>NO</th>
               <th style={{border:"1px solid #000",padding:"3px 6px",textAlign:"left"}}>Nama Barang</th>
               <th style={{border:"1px solid #000",padding:"3px 6px",textAlign:"center",width:70}}>Jumlah</th>
@@ -1367,11 +1365,16 @@ function MutPrint({m, onClose}) {
           </thead>
           <tbody>
             {inventaris.map((b,i)=>(
-              <tr key={b.nama}>
+              <tr key={b.id||b.nama}>
                 <td style={{border:"1px solid #000",padding:"3px 6px",textAlign:"center"}}>{i+1}</td>
                 <td style={{border:"1px solid #000",padding:"3px 6px"}}>{b.nama}</td>
                 <td style={{border:"1px solid #000",padding:"3px 6px",textAlign:"center"}}>{b.jumlah}</td>
-                <td style={{border:"1px solid #000",padding:"3px 6px"}}></td>
+                <td style={{border:"1px solid #000",padding:"3px 6px",textAlign:"center",fontSize:10,
+                  color: cekHari[b.id]?.status ? STATUS_COLOR[cekHari[b.id].status] : "#000",
+                  fontWeight: cekHari[b.id]?.status ? 700 : 400}}>
+                  {cekHari[b.id]?.status || ""}
+                  {cekHari[b.id]?.ket ? ` - ${cekHari[b.id].ket}` : ""}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1382,7 +1385,7 @@ function MutPrint({m, onClose}) {
       <div style={{marginBottom:14}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
           <thead>
-            <tr style={{background:"#e5e7eb"}}>
+            <tr style={{background:"#e5e7eb",color:"#000"}}>
               <th style={{border:"1px solid #000",padding:"4px 6px",textAlign:"center",width:28}}>NO</th>
               <th style={{border:"1px solid #000",padding:"4px 6px",textAlign:"center",width:48}}>Jam</th>
               <th style={{border:"1px solid #000",padding:"4px 6px",textAlign:"left"}}>Isi Laporan</th>
@@ -1420,6 +1423,14 @@ function MutPrint({m, onClose}) {
         </table>
       </div>
 
+      {/* Catatan temuan regu masuk */}
+      {m.konfirmasi?.catatan&&(
+        <div style={{marginBottom:12,border:"1px solid #000",borderRadius:4,padding:"6px 8px"}}>
+          <div style={{fontSize:10,fontWeight:700,marginBottom:3}}>CATATAN TEMUAN REGU {m.konfirmasi.regu}:</div>
+          <div style={{fontSize:11,lineHeight:1.5}}>{m.konfirmasi.catatan}</div>
+        </div>
+      )}
+
       {/* Tanda tangan */}
       <div style={{display:"flex",justifyContent:"space-between",marginTop:10}}>
         <div style={{textAlign:"center",fontSize:10}}>
@@ -1430,7 +1441,10 @@ function MutPrint({m, onClose}) {
         <div style={{textAlign:"center",fontSize:10}}>
           <div>Yang Menerima</div>
           <div style={{marginTop:36,fontWeight:700}}>Regu {m.toRegu||"—"}</div>
-          <div style={{borderTop:"1px solid #000",marginTop:4,paddingTop:2}}>{m.toRegu?(REGU[m.toRegu]||[])[0]||"—":"—"}</div>
+          <div style={{borderTop:"1px solid #000",marginTop:4,paddingTop:2}}>
+            {m.konfirmasi ? m.konfirmasi.oleh : (m.toRegu?(REGU[m.toRegu]||[])[0]||"—":"—")}
+            {m.konfirmasi && <div style={{fontSize:9,color:"#000"}}>✓ {new Date(m.konfirmasi.ts).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}</div>}
+          </div>
         </div>
         <div style={{textAlign:"center",fontSize:10}}>
           <div>Mengetahui</div>
@@ -1448,13 +1462,43 @@ function MutPrint({m, onClose}) {
   );
 }
 
-function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incidents=[],packages=[],guests=[],currentUser,standJaga=[],rollings=[]}) {
+// Hitung regu berikutnya berdasarkan urutan rotasi [1,2,3]
+function getNextRegu(regu) {
+  const urut = [1,2,3];
+  const idx = urut.indexOf(Number(regu));
+  return urut[(idx + 1) % 3];
+}
+
+function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incidents=[],packages=[],guests=[],currentUser,standJaga=[],rollings=[],inventarisDaftar=[],inventarisCek={}}) {
   const [open,setOpen]=useState(false);
   const [photo,setPhoto]=useState(null);
   const [viewPhoto,setViewPhoto]=useState(null);
   const [printMut,setPrintMut]=useState(null);
-  const [fm,setFm]=useState({content:"",fromRegu:reguHari,toRegu:"",incidents:"",packages:"",guests:"",notes:""});
+  const [cekOpen,setCekOpen]=useState(null);
+  const [cekCatatan,setCekCatatan]=useState("");
+  const toReguAuto = String(getNextRegu(reguHari));
+  const [fm,setFm]=useState({content:"",fromRegu:String(reguHari),toRegu:toReguAuto,incidents:"",packages:"",guests:"",notes:""});
   const f=(k,v)=>setFm(p=>({...p,[k]:v}));
+
+  const myRegu = currentUser ? String(currentUser.regu) : null;
+  const bisaCekTerima = (m) => myRegu && String(m.toRegu) === myRegu && !m.konfirmasi;
+
+  const konfirmasiTerima = (m) => {
+    const updated = mutations.map(x => x.id === m.id ? {
+      ...x,
+      konfirmasi: {
+        status: "Diterima",
+        oleh: currentUser?.name || "—",
+        regu: myRegu,
+        catatan: cekCatatan.trim(),
+        ts: Date.now()
+      }
+    } : x);
+    setMutations(updated);
+    setCekOpen(null);
+    setCekCatatan("");
+    toast("Serah terima dikonfirmasi!");
+  };
 
   // ── Auto-isi SEMUA aktivitas hari ini ───────────────────────────────────
   const buatAutoLaporan = () => {
@@ -1584,7 +1628,7 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
   const submit=()=>{
     if(!fm.content){toast("Isi laporan!",false);return;}
     setMutations([...mutations,{...fm,photo,id:Date.now(),ts:Date.now()}]);
-    setFm({content:"",fromRegu:reguHari,toRegu:"",incidents:"",packages:"",guests:"",notes:""}); setPhoto(null);
+    setFm({content:"",fromRegu:String(reguHari),toRegu:toReguAuto,incidents:"",packages:"",guests:"",notes:""}); setPhoto(null);
     setOpen(false); toast("Mutasi disimpan!");
   };
   return (
@@ -1598,9 +1642,18 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
       {!canEdit&&<ReadOnlyBanner reguHari={reguHari}/>}
       {mutations.length===0&&<div style={{color:"#9ca3af",fontSize:13}}>Belum ada mutasi.</div>}
       {[...mutations].reverse().map(m=>(
-        <div key={m.id} style={{background:"#fff",border:"1.5px solid #dbeafe",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+        <div key={m.id} style={{background:"#fff",border:`1.5px solid ${m.konfirmasi?"#bbf7d0":"#dbeafe"}`,borderRadius:12,padding:"12px 14px",marginBottom:12}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:4}}>
-            <div style={{display:"flex",gap:7,alignItems:"center"}}><Bdg text={`Regu ${m.fromRegu}`} color="#1d4ed8"/><IC n="arr" s={13} c="#9ca3af"/>{m.toRegu&&<Bdg text={`Regu ${m.toRegu}`} color="#059669"/>}{m.photo&&<Bdg text="📷" color="#7c3aed"/>}</div>
+            <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
+              <Bdg text={`Regu ${m.fromRegu}`} color="#1d4ed8"/>
+              <IC n="arr" s={13} c="#9ca3af"/>
+              {m.toRegu&&<Bdg text={`Regu ${m.toRegu}`} color="#059669"/>}
+              {m.photo&&<Bdg text="📷" color="#7c3aed"/>}
+              {m.konfirmasi
+                ? <span style={{fontSize:10,background:"#f0fdf4",border:"1px solid #86efac",borderRadius:6,padding:"2px 7px",color:"#16a34a",fontWeight:700}}>✅ Diterima Regu {m.konfirmasi.regu}</span>
+                : <span style={{fontSize:10,background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:6,padding:"2px 7px",color:"#d97706",fontWeight:700}}>⏳ Belum Dikonfirmasi</span>
+              }
+            </div>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
               <span style={{fontSize:10.5,color:"#9ca3af"}}>{fmtDT(m.ts)}</span>
               <Btn onClick={()=>setPrintMut(m)} color="#1d4ed8" variant="outline" size="sm"><IC n="print" s={11}/> Cetak</Btn>
@@ -1616,15 +1669,55 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
             <img src={m.photo} alt="" style={{width:30,height:20,objectFit:"cover",borderRadius:3}}/> Lihat Foto
           </button>}
           {m.notes&&<div style={{fontSize:11.5,color:"#6b7280",marginTop:4}}>📝 {m.notes}</div>}
+          {m.konfirmasi?.catatan&&<div style={{marginTop:6,background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"6px 10px",fontSize:11.5,color:"#92400e"}}>📋 <b>Catatan Regu {m.konfirmasi.regu}:</b> {m.konfirmasi.catatan}</div>}
+          {bisaCekTerima(m)&&(
+            <button onClick={()=>{setCekOpen(m);setCekCatatan("");}} style={{marginTop:8,width:"100%",padding:"8px",background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:8,color:"#16a34a",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+              ✅ Konfirmasi Terima Serah Terima
+            </button>
+          )}
         </div>
       ))}
       <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Mutasi">
         {viewPhoto&&<div style={{textAlign:"center"}}><img src={viewPhoto} alt="mutasi" style={{width:"100%",maxHeight:400,objectFit:"contain",borderRadius:10,marginBottom:14}}/><Btn onClick={()=>setViewPhoto(null)} color="#1d4ed8">Tutup</Btn></div>}
       </Modal>
       <Modal open={!!printMut} onClose={()=>setPrintMut(null)} title="Laporan Mutasi" wide noPad>
-        {printMut&&<MutPrint m={printMut} onClose={()=>setPrintMut(null)}/>}
+        {printMut&&<MutPrint m={printMut} onClose={()=>setPrintMut(null)} inventarisDaftar={inventarisDaftar} inventarisCek={inventarisCek}/>}
+      </Modal>
+      {/* Modal Konfirmasi Serah Terima */}
+      <Modal open={!!cekOpen} onClose={()=>setCekOpen(null)} title="Konfirmasi Serah Terima">
+        {cekOpen&&<div>
+          <div style={{background:"#f8faff",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#1e3a8a",marginBottom:6}}>📋 Laporan dari Regu {cekOpen.fromRegu}</div>
+            <div style={{fontSize:11.5,color:"#374151",whiteSpace:"pre-wrap",lineHeight:1.6,maxHeight:180,overflowY:"auto"}}>{cekOpen.content}</div>
+            {cekOpen.incidents&&<div style={{marginTop:6,fontSize:11,color:"#dc2626"}}>⚠️ Insiden: {cekOpen.incidents}</div>}
+            {cekOpen.packages&&<div style={{fontSize:11,color:"#d97706"}}>📦 Paket: {cekOpen.packages}</div>}
+            {cekOpen.guests&&<div style={{fontSize:11,color:"#7c3aed"}}>🏠 Tamu: {cekOpen.guests}</div>}
+            {cekOpen.notes&&<div style={{fontSize:11,color:"#6b7280"}}>📝 Catatan: {cekOpen.notes}</div>}
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:6}}>📝 Catatan Temuan (opsional)</label>
+            <textarea value={cekCatatan} onChange={e=>setCekCatatan(e.target.value)}
+              placeholder="Tulis temuan atau catatan saat cek serah terima... (kosongkan jika tidak ada)"
+              style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #bfdbfe",fontSize:12.5,fontFamily:"inherit",resize:"vertical",minHeight:80,boxSizing:"border-box",color:"#000"}}/>
+          </div>
+          <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11.5,color:"#166534"}}>
+            ✅ Dengan konfirmasi ini, Regu {myRegu} menyatakan telah menerima serah terima dari Regu {cekOpen.fromRegu}.
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={()=>konfirmasiTerima(cekOpen)} color="#16a34a" size="lg">Konfirmasi Diterima</Btn>
+            <Btn onClick={()=>setCekOpen(null)} color="#6b7280" variant="outline" size="lg">Batal</Btn>
+          </div>
+        </div>}
       </Modal>
       <Modal open={open} onClose={()=>{setOpen(false);setPhoto(null);}} title="Buat Laporan Mutasi">
+        {/* Info regu otomatis */}
+        <div style={{background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:10,padding:"10px 14px",marginBottom:10,display:"flex",gap:10,alignItems:"center"}}>
+          <span style={{fontSize:20}}>🔄</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#166534"}}>Serah Terima Otomatis</div>
+            <div style={{fontSize:11,color:"#374151"}}>Regu <b>{reguHari}</b> → Regu <b>{toReguAuto}</b></div>
+          </div>
+        </div>
         {/* Tombol auto-isi */}
         <div style={{background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
           <div>
@@ -2877,6 +2970,174 @@ function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,curren
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// INVENTARIS TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+const DEFAULT_INVENTARIS = [
+  {id:"inv1", nama:"TV", jumlah:"1 unit"},
+  {id:"inv2", nama:"Dispenser", jumlah:"1 unit"},
+  {id:"inv3", nama:"Senter", jumlah:"2 unit"},
+  {id:"inv4", nama:"APAR", jumlah:"1 unit"},
+  {id:"inv5", nama:"Komputer", jumlah:"1 unit"},
+  {id:"inv6", nama:"Police Line", jumlah:"1 unit"},
+];
+
+function InventarisTab({inventarisDaftar, setInventarisDaftar, inventarisCek, setInventarisCek, toast, isAdmin, canEdit, now}) {
+  const todayKey = now.toISOString().slice(0,10);
+  const cekHari = inventarisCek[todayKey] || {};
+  const [editOpen, setEditOpen] = useState(false);
+  const [editItem, setEditItem] = useState(null); // {id, nama, jumlah} or null for new
+  const [formNama, setFormNama] = useState("");
+  const [formJumlah, setFormJumlah] = useState("");
+
+  const STATUS_OPTS = ["Lengkap","Kurang","Rusak"];
+  const STATUS_COLOR = {Lengkap:"#16a34a", Kurang:"#d97706", Rusak:"#dc2626"};
+  const STATUS_BG = {Lengkap:"#f0fdf4", Kurang:"#fffbeb", Rusak:"#fef2f2"};
+
+  const setCekStatus = (id, status) => {
+    const updated = {...inventarisCek, [todayKey]: {...cekHari, [id]: {...(cekHari[id]||{}), status, waktu: new Date().toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}}};
+    setInventarisCek(updated);
+    toast("Status diperbarui!");
+  };
+
+  const setCekKet = (id, ket) => {
+    const updated = {...inventarisCek, [todayKey]: {...cekHari, [id]: {...(cekHari[id]||{}), ket}}};
+    setInventarisCek(updated);
+  };
+
+  const openEdit = (item) => {
+    setEditItem(item);
+    setFormNama(item ? item.nama : "");
+    setFormJumlah(item ? item.jumlah : "");
+    setEditOpen(true);
+  };
+
+  const saveEdit = () => {
+    if (!formNama.trim()) return toast("Nama barang wajib diisi!", false);
+    if (editItem) {
+      setInventarisDaftar(inventarisDaftar.map(x => x.id === editItem.id ? {...x, nama:formNama.trim(), jumlah:formJumlah.trim()} : x));
+      toast("Barang diperbarui!");
+    } else {
+      const newId = "inv" + Date.now();
+      setInventarisDaftar([...inventarisDaftar, {id:newId, nama:formNama.trim(), jumlah:formJumlah.trim()||"-"}]);
+      toast("Barang ditambahkan!");
+    }
+    setEditOpen(false);
+  };
+
+  const hapusItem = (id) => {
+    if (!window.confirm("Hapus barang ini?")) return;
+    setInventarisDaftar(inventarisDaftar.filter(x => x.id !== id));
+    toast("Barang dihapus!");
+  };
+
+  const totalCek = inventarisDaftar.filter(b => cekHari[b.id]?.status).length;
+  const adaMasalah = inventarisDaftar.filter(b => cekHari[b.id]?.status && cekHari[b.id]?.status !== "Lengkap").length;
+
+  return (
+    <div style={{padding:"14px 12px",maxWidth:600,margin:"0 auto"}}>
+      <PH title="Inventaris Barang" sub="Cek & kelola barang per shift"
+        action={isAdmin && <Btn onClick={()=>openEdit(null)} color="#1d4ed8" size="sm"><IC n="plus" s={12}/> Tambah</Btn>}
+      />
+
+      {/* Ringkasan */}
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        <div style={{flex:1,background:"#eff6ff",borderRadius:12,padding:"10px 12px",textAlign:"center",border:"1.5px solid #bfdbfe"}}>
+          <div style={{fontSize:20,fontWeight:800,color:"#1d4ed8"}}>{totalCek}/{inventarisDaftar.length}</div>
+          <div style={{fontSize:11,color:"#3b82f6",fontWeight:600}}>Sudah Dicek</div>
+        </div>
+        <div style={{flex:1,background: adaMasalah>0?"#fef2f2":"#f0fdf4",borderRadius:12,padding:"10px 12px",textAlign:"center",border:`1.5px solid ${adaMasalah>0?"#fecaca":"#bbf7d0"}`}}>
+          <div style={{fontSize:20,fontWeight:800,color: adaMasalah>0?"#dc2626":"#16a34a"}}>{adaMasalah}</div>
+          <div style={{fontSize:11,color: adaMasalah>0?"#dc2626":"#16a34a",fontWeight:600}}>Ada Masalah</div>
+        </div>
+        <div style={{flex:1,background:"#f8faff",borderRadius:12,padding:"10px 12px",textAlign:"center",border:"1.5px solid #e0eaf8"}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#374151"}}>{now.toLocaleDateString("id-ID",{day:"numeric",month:"short"})}</div>
+          <div style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Tanggal Cek</div>
+        </div>
+      </div>
+
+      {/* Daftar Barang */}
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {inventarisDaftar.map((b,i) => {
+          const cek = cekHari[b.id] || {};
+          const hasStatus = !!cek.status;
+          return (
+            <div key={b.id} style={{background:"#fff",borderRadius:14,border:`1.5px solid ${hasStatus ? (STATUS_COLOR[cek.status]+"33") : "#e0eaf8"}`,padding:"12px 14px",boxShadow:"0 1px 4px rgba(30,58,138,.06)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom: hasStatus?8:0}}>
+                <div style={{width:28,height:28,borderRadius:8,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#1d4ed8",fontSize:12,flexShrink:0}}>{i+1}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"#1e3a8a"}}>{b.nama}</div>
+                  <div style={{fontSize:11,color:"#6b7280"}}>{b.jumlah}</div>
+                </div>
+                {hasStatus && (
+                  <div style={{background:STATUS_BG[cek.status],border:`1px solid ${STATUS_COLOR[cek.status]}44`,borderRadius:8,padding:"3px 8px",fontSize:11,fontWeight:700,color:STATUS_COLOR[cek.status]}}>
+                    {cek.status}
+                    {cek.waktu && <span style={{fontWeight:400,color:"#9ca3af",marginLeft:4}}>{cek.waktu}</span>}
+                  </div>
+                )}
+                {isAdmin && (
+                  <div style={{display:"flex",gap:4,flexShrink:0}}>
+                    <button onClick={()=>openEdit(b)} style={{background:"#f0f5ff",border:"1px solid #bfdbfe",borderRadius:6,padding:"4px 6px",cursor:"pointer",color:"#3b82f6",fontSize:10,fontWeight:700}}>Edit</button>
+                    <button onClick={()=>hapusItem(b.id)} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 6px",cursor:"pointer",color:"#dc2626",fontSize:10,fontWeight:700}}>✕</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Tombol status */}
+              {canEdit && (
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {STATUS_OPTS.map(s => (
+                    <button key={s} onClick={()=>setCekStatus(b.id,s)}
+                      style={{flex:1,minWidth:70,padding:"6px 4px",borderRadius:8,border:`1.5px solid ${cek.status===s ? STATUS_COLOR[s] : "#e0eaf8"}`,
+                        background: cek.status===s ? STATUS_BG[s] : "#f8faff",
+                        color: cek.status===s ? STATUS_COLOR[s] : "#6b7280",
+                        fontWeight: cek.status===s ? 700 : 500,
+                        fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Keterangan jika ada masalah */}
+              {hasStatus && cek.status !== "Lengkap" && canEdit && (
+                <input value={cek.ket||""} onChange={e=>setCekKet(b.id,e.target.value)}
+                  placeholder="Keterangan masalah..."
+                  style={{width:"100%",marginTop:6,padding:"6px 10px",borderRadius:8,border:"1.5px solid #fca5a5",fontSize:11,fontFamily:"inherit",boxSizing:"border-box",color:"#000"}}/>
+              )}
+              {hasStatus && cek.status !== "Lengkap" && !canEdit && cek.ket && (
+                <div style={{marginTop:6,fontSize:11,color:"#dc2626",fontStyle:"italic"}}>📝 {cek.ket}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Modal tambah/edit barang (admin only) */}
+      <Modal open={editOpen} onClose={()=>setEditOpen(false)} title={editItem?"Edit Barang":"Tambah Barang"}>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:4}}>Nama Barang *</label>
+            <input value={formNama} onChange={e=>setFormNama(e.target.value)}
+              placeholder="Contoh: Senter, APAR, Handy Talky..."
+              style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #bfdbfe",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",color:"#000"}}/>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:4}}>Jumlah</label>
+            <input value={formJumlah} onChange={e=>setFormJumlah(e.target.value)}
+              placeholder="Contoh: 2 unit, 1 set..."
+              style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #bfdbfe",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",color:"#000"}}/>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:4}}>
+            <Btn onClick={saveEdit} color="#1d4ed8" size="lg" style={{flex:1}}>Simpan</Btn>
+            <Btn onClick={()=>setEditOpen(false)} color="#6b7280" variant="outline" size="lg" style={{flex:1}}>Batal</Btn>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 const NAV_TABS = [
   {id:"dashboard",label:"Dashboard",icon:"home"},
   {id:"instruksi",label:"Instruksi",icon:"alert"},
@@ -2928,6 +3189,21 @@ function App() {
 
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(id); }, []);
 
+  // Intercept tombol Back Android agar tidak langsung keluar aplikasi
+  useEffect(() => {
+    window.history.pushState({tab: "dashboard"}, "");
+  }, []);
+  useEffect(() => {
+    window.history.pushState({tab}, "");
+    const handler = (e) => {
+      if (moreOpen) { setMoreOpen(false); window.history.pushState({tab}, ""); return; }
+      if (tab !== "dashboard") { setTab("dashboard"); window.history.pushState({tab:"dashboard"}, ""); }
+      else { window.history.pushState({tab:"dashboard"}, ""); }
+    };
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, [tab, moreOpen]);
+
   // Auto-logout setelah 15 menit tidak aktif
   const resetTimer = useCallback(() => {
     if (inactiveTimer.current) clearTimeout(inactiveTimer.current);
@@ -2952,7 +3228,8 @@ function App() {
   const shift = getShift(now);
   const reguHari = getReguHari(now);
 
-  const [posAssign, setPosAssign] = useData("pad_pos", {});
+  const todayKey = new Date().toISOString().slice(0,10);
+  const [posAssign, setPosAssign] = useData("pad_pos_" + todayKey, {});
   const [incidents, setIncidents] = useData("pad_inc", []);
   const [packages, setPackages] = useData("pad_pkg", []);
   const [guests, setGuests] = useData("pad_guest", []);
@@ -2960,9 +3237,12 @@ function App() {
   const [mutations, setMutations] = useData("pad_mut", []);
   const [standJaga, setStandJaga] = useData("pad_stand", []);
   const [posRollingLog, setPosRollingLog] = useData("pad_posroll", []);
+  const [rollings, setRollings] = useData("pad_rolling", []);
   const [absen, setAbsen] = useData("pad_absen", {});
   const [liburData, setLiburData] = useData("pad_libur", {});
   const [instruksi, setInstruksi] = useData("pad_instruksi", []);
+  const [inventarisDaftar, setInventarisDaftar] = useData("pad_inv_daftar", DEFAULT_INVENTARIS);
+  const [inventarisCek, setInventarisCek] = useData("pad_inv_cek", {});
   const [notif, setNotif] = useState(null);
 
   const toast = (msg, ok = true) => { setNotif({ msg, ok }); setTimeout(() => setNotif(null), 3000); };
@@ -2990,6 +3270,7 @@ function App() {
     { id: "package", label: "Paket & Kurir", icon: "pkg" },
     { id: "guest", label: "Tamu & Asrama", icon: "ppl" },
     { id: "mutation", label: "Mutasi Laporan", icon: "file" },
+    { id: "inventaris", label: "Inventaris Barang", icon: "pkg" },
     { id: "profile", label: isAdmin ? "Admin" : "Profil Saya", icon: "ppl" },
   ];
 
@@ -3050,11 +3331,12 @@ function App() {
         {tab === "incident" && <IncTab incidents={incidents} setIncidents={setIncidents} posAssign={posAssign} toast={toast} canEdit={canEdit} />}
         {tab === "package" && <PkgTab packages={packages} setPackages={setPackages} toast={toast} canEdit={canEdit} />}
         {tab === "guest" && <GuestTab guests={guests} setGuests={setGuests} toast={toast} canEdit={canEdit} />}
-        {tab === "mutation" && <MutTab mutations={mutations} setMutations={setMutations} reguHari={reguHari} toast={toast} canEdit={canEdit} patrols={patrols} incidents={incidents} packages={packages} guests={guests} currentUser={currentUser} standJaga={standJaga} rollings={rollings} />}
+        {tab === "mutation" && <MutTab mutations={mutations} setMutations={setMutations} reguHari={reguHari} toast={toast} canEdit={canEdit} patrols={patrols} incidents={incidents} packages={packages} guests={guests} currentUser={currentUser} standJaga={standJaga} rollings={rollings} inventarisDaftar={inventarisDaftar} inventarisCek={inventarisCek} />}
         {tab === "absen" && <AbsenTab absen={absen} setAbsen={setAbsen} liburData={liburData} setLiburData={setLiburData} reguHari={reguHari} toast={toast} canEdit={canEdit} isAdmin={isAdmin} now={now} />}
         {tab === "instruksi" && <InstruksiTab instruksi={instruksi} setInstruksi={setInstruksi} toast={toast} isAdmin={isAdmin} currentUser={currentUser} />}
         {tab === "profile" && <ProfileTab currentUser={currentUser} patrols={patrols} standJaga={standJaga} incidents={incidents} mutations={mutations} onLogout={handleLogout} toast={toast} userPins={userPins} setUserPins={setUserPins} />}
         {tab === "members" && <AdminMemberTab patrols={patrols} standJaga={standJaga} incidents={incidents} mutations={mutations} />}
+        {tab === "inventaris" && <InventarisTab inventarisDaftar={inventarisDaftar} setInventarisDaftar={setInventarisDaftar} inventarisCek={inventarisCek} setInventarisCek={setInventarisCek} toast={toast} isAdmin={isAdmin} canEdit={canEdit} now={now} />}
       </main>
 
       {/* BOTTOM NAV */}
