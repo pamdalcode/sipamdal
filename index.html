@@ -478,20 +478,42 @@ const IC = ({n,s=18,c="currentColor"}) => ({
 
 // ─── QR SVG ───────────────────────────────────────────────────────────────────
 function QRSvg({ value, size=120 }) {
-  const h = value.split("").reduce((a,c)=>((a<<5)-a+c.charCodeAt(0))|0, 0);
-  const N=21, cell=size/N, grid=[];
-  for(let r=0;r<N;r++) for(let c=0;c<N;c++) {
-    const finder=(r<7&&c<7)||(r<7&&c>=14)||(r>=14&&c<7);
-    const inner=(r>=2&&r<=4&&c>=2&&c<=4)||(r>=2&&r<=4&&c>=16&&c<=18)||(r>=16&&r<=18&&c>=2&&c<=4);
-    const timing=(r===6||c===6)&&!finder;
-    let filled=finder||inner;
-    if(timing) filled=(r+c)%2===0;
-    if(!finder&&!timing) filled=(Math.abs((h*(r*N+c+7))|0)%255)>120;
-    grid.push({r,c,filled});
-  }
+  const [svgData, setSvgData] = useState(null);
+  useEffect(() => {
+    const generate = () => {
+      try {
+        const QRC = window.qrcodegen.QrCode;
+        const code = QRC.encodeText(value, QRC.Ecc.MEDIUM);
+        const n = code.size;
+        let d = "";
+        for (let y = 0; y < n; y++) {
+          for (let x = 0; x < n; x++) {
+            if (code.getModule(x, y)) d += `M${x},${y}h1v1h-1z`;
+          }
+        }
+        setSvgData({ d, n });
+      } catch(e) { setSvgData(null); }
+    };
+    if (window.qrcodegen) { generate(); return; }
+    if (window._qrLoading) { const t=setInterval(()=>{ if(window.qrcodegen){clearInterval(t);generate();} },100); return ()=>clearInterval(t); }
+    window._qrLoading = true;
+    const sc = document.createElement("script");
+    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodegen/1.8.0/qrcodegen.min.js";
+    sc.onload = () => { window._qrLoading=false; generate(); };
+    document.head.appendChild(sc);
+  }, [value]);
+
+  if (!svgData) return (
+    <div style={{width:size,height:size,background:"#fff",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{fontSize:10,color:"#999"}}>QR...</div>
+    </div>
+  );
+  const { d, n } = svgData;
+  const pad = 4;
   return (
-    <svg width={size} height={size} style={{background:"var(--card-solid)",borderRadius:8,display:"block"}}>
-      {grid.map(({r,c,filled})=>filled&&<rect key={`${r}-${c}`} x={c*cell+.5} y={r*cell+.5} width={cell-.5} height={cell-.5} fill="var(--border2)" rx=".5"/>)}
+    <svg width={size} height={size} viewBox={`${-pad} ${-pad} ${n+pad*2} ${n+pad*2}`}
+      style={{background:"#fff",borderRadius:8,display:"block"}} shapeRendering="crispEdges">
+      <path d={d} fill="#000"/>
     </svg>
   );
 }
