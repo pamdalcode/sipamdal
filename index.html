@@ -62,9 +62,9 @@
       --green-border:rgba(74,222,128,.25);
       --status-card-bg:linear-gradient(135deg,#0d1f14,#122a1a);
       --admin-card-bg:linear-gradient(135deg,#051208,#0a2015);
-      --dark-border:var(--dark-border);
+      --dark-border:rgba(255,255,255,.1);
       --dark-border2:#1e5c38;
-      --qr-border:var(--qr-border);
+      --qr-border:rgba(255,255,255,.15);
       --stat-inner:rgba(0,0,0,.2);
     }
 
@@ -193,7 +193,7 @@
 <script type="module" id="fb-init">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import {
-    getFirestore, enableIndexedDbPersistence,
+    getFirestore,
     collection, doc, setDoc, deleteDoc, onSnapshot,
     getDocs, addDoc, serverTimestamp, query, orderBy, limit,
     getDoc
@@ -213,8 +213,7 @@
   const db  = getFirestore(app);
   const auth = getAuth(app);
 
-  // Auth anonim
-  signInAnonymously(auth).catch(()=>{});
+  // Auth anonim — combined with probe start below
 
   // ── Audit log helper ──────────────────────────────────────────────────────────
   async function writeAuditLog(entry) {
@@ -521,7 +520,7 @@ function Btn({children,onClick,color="var(--accent)",size="md",variant="solid",d
 }
 
 // ─── CAMERA QR SCANNER ────────────────────────────────────────────────────────
-function CamScanner({onScan,onClose}) {
+function CamScanner({onScan,onClose,customDecode}) {
   const vRef=useRef(), cRef=useRef(), streamRef=useRef(), animRef=useRef();
   const [err,setErr]=useState(null);
   const [live,setLive]=useState(false);
@@ -534,31 +533,48 @@ function CamScanner({onScan,onClose}) {
     setLive(false);
   },[]);
 
+  const decode=useCallback((raw)=>{
+    // Gunakan customDecode jika ada (untuk Pos), fallback ke decode area patroli
+    if(customDecode) return customDecode(raw);
+    return decQR(raw)||ALL_AREAS.find(a=>raw.includes(a))||null;
+  },[customDecode]);
+
   const scan=useCallback(()=>{
     const v=vRef.current,c=cRef.current;
     if(!v||!c||v.readyState<2){animRef.current=requestAnimationFrame(scan);return;}
-    const ctx=c.getContext("2d"); c.width=v.videoWidth; c.height=v.videoHeight; ctx.drawImage(v,0,0);
+    const ctx=c.getContext("2d");
+    c.width=v.videoWidth||320; c.height=v.videoHeight||240;
+    ctx.drawImage(v,0,0);
     if(window.BarcodeDetector){
       new window.BarcodeDetector({formats:["qr_code"]}).detect(c).then(bs=>{
         if(bs.length){
-          const area=decQR(bs[0].rawValue)||ALL_AREAS.find(a=>bs[0].rawValue.includes(a));
-          if(area&&ALL_AREAS.includes(area)){setHit(area);stop();setTimeout(()=>onScan(area),400);return;}
+          const result=decode(bs[0].rawValue);
+          if(result){setHit(result);stop();setTimeout(()=>onScan(result),400);return;}
         }
         animRef.current=requestAnimationFrame(scan);
       }).catch(()=>{animRef.current=requestAnimationFrame(scan);});
     } else { animRef.current=requestAnimationFrame(scan); }
-  },[onScan,stop]);
+  },[onScan,stop,decode]);
+
+  const startScan=useCallback(()=>{
+    if(animRef.current) cancelAnimationFrame(animRef.current);
+    animRef.current=requestAnimationFrame(scan);
+  },[scan]);
 
   const start=async()=>{
-    setErr(null);
+    setErr(null); setHit(null);
     try{
-      const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}});
-      streamRef.current=s; vRef.current.srcObject=s; await vRef.current.play(); setLive(true);
+      const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}}});
+      streamRef.current=s;
+      const v=vRef.current; v.srcObject=s;
+      // Pasang handler SEBELUM play() untuk hindari race condition
+      v.onloadedmetadata=()=>{ v.play().then(()=>{ setLive(true); startScan(); }).catch(()=>{}); };
+      // Fallback jika metadata sudah loaded
+      if(v.readyState>=1){ v.play().then(()=>{ setLive(true); startScan(); }).catch(()=>{}); }
     }catch(e){setErr("Kamera tidak dapat diakses. Pastikan izin kamera diberikan.");}
   };
 
   useEffect(()=>{ start(); return()=>stop(); },[]);
-  useEffect(()=>{ if(live&&vRef.current) vRef.current.onloadedmetadata=()=>{animRef.current=requestAnimationFrame(scan);}; },[live,scan]);
 
   return (
     <div>
@@ -573,23 +589,32 @@ function CamScanner({onScan,onClose}) {
           </div>
         )}
         {hit&&<div style={{position:"absolute",bottom:12,left:"50%",transform:"translateX(-50%)",background:"var(--ok)",color:"#fff",borderRadius:8,padding:"8px 18px",fontWeight:700,fontSize:14,whiteSpace:"nowrap"}}>✓ {hit}</div>}
-        {!live&&!hit&&<div style={{textAlign:"center",color:"#fff",padding:24}}><IC n="cam" s={44} c="var(--accent-light)"/><div style={{marginTop:10,fontSize:13}}>Memulai kamera...</div></div>}
+        {!live&&!hit&&!err&&<div style={{textAlign:"center",color:"var(--tx2)",padding:24}}><IC n="cam" s={44} c="var(--accent-light)"/><div style={{marginTop:10,fontSize:13}}>Memulai kamera...</div></div>}
       </div>
       <div style={{padding:"14px 18px 18px"}}>
-        {!hasBD&&live&&<div style={{background:"rgba(255,204,0,.07)",border:"1px solid #fbbf24",borderRadius:9,padding:"9px 13px",marginBottom:10,fontSize:12.5,color:"#ffcc00"}}>⚠ Browser ini belum mendukung scan otomatis. Pilih gedung dari daftar.</div>}
+        {!hasBD&&live&&<div style={{background:"rgba(255,204,0,.07)",border:"1px solid #fbbf24",borderRadius:9,padding:"9px 13px",marginBottom:10,fontSize:12.5,color:"#ffcc00"}}>⚠ Browser ini belum mendukung scan otomatis. Pilih dari daftar di bawah.</div>}
         {err&&<div style={{background:"rgba(255,50,50,.1)",border:"1px solid #fca5a5",borderRadius:9,padding:"9px 13px",marginBottom:10,fontSize:12.5,color:"var(--r)"}}>{err}</div>}
-        <div style={{fontSize:11.5,fontWeight:700,color:"var(--accent-light)",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>Atau pilih gedung manual:</div>
+        <div style={{fontSize:11.5,fontWeight:700,color:"var(--accent-light)",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>Atau pilih manual:</div>
         <div style={{maxHeight:210,overflowY:"auto",display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
-          {Object.entries(PATROL_AREAS).map(([pos,areas])=>(
-            <div key={pos}>
-              <div style={{fontSize:10.5,color:"var(--tx3)",fontWeight:700,padding:"3px 0 2px",textTransform:"uppercase",letterSpacing:.5}}>{pos}</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:4}}>
-                {areas.map(a=>(
-                  <button key={a} onClick={()=>{stop();onScan(a);}} style={{background:"var(--card-solid)",border:"1.5px solid var(--dark-border)",borderRadius:7,color:"var(--accent)",fontSize:12,fontWeight:600,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit"}}>{a}</button>
-                ))}
-              </div>
-            </div>
-          ))}
+          {customDecode
+            ? /* Mode Pos — tampilkan daftar POS_LIST */
+              POS_LIST.map(pos=>(
+                <button key={pos} onClick={()=>{stop();onScan(pos);}} style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:8,color:"var(--accent-light)",fontSize:13,fontWeight:600,padding:"10px 14px",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                  📍 {pos}
+                </button>
+              ))
+            : /* Mode Patroli/Stand — tampilkan area per pos */
+              Object.entries(PATROL_AREAS).map(([pos,areas])=>(
+                <div key={pos}>
+                  <div style={{fontSize:10.5,color:"var(--tx3)",fontWeight:700,padding:"3px 0 2px",textTransform:"uppercase",letterSpacing:.5}}>{pos}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:4}}>
+                    {areas.map(a=>(
+                      <button key={a} onClick={()=>{stop();onScan(a);}} style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:7,color:"var(--accent-light)",fontSize:12,fontWeight:600,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit"}}>{a}</button>
+                    ))}
+                  </div>
+                </div>
+              ))
+          }
         </div>
         <div style={{display:"flex",gap:8}}>
           {live?<Btn onClick={stop} color="var(--tx4)" variant="outline">Stop Kamera</Btn>:<Btn onClick={start} color="var(--accent)"><IC n="cam" s={13}/> Aktifkan</Btn>}
@@ -793,7 +818,7 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
       </div>
 
       {/* Status Patroli per Pos */}
-      <div style={{background:"var(--card-solid)",border:"1px solid var(--dark-border)",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+      <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
           <div style={{fontSize:9,letterSpacing:3,color:"var(--accent)"}}>▶ STATUS PATROLI HARI INI</div>
           <button onClick={()=>setTab("patrol")} style={{fontSize:9,color:"var(--accent)",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",letterSpacing:1}}>LIHAT SEMUA →</button>
@@ -804,7 +829,7 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
           const minsAgo = last ? Math.floor((now - last.ts)/60000) : null;
           const overdue = !last || minsAgo > 60;
           return (
-            <div key={p} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid var(--dark-border)"}}>
+            <div key={p} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
               <div>
                 <div style={{fontSize:11,fontWeight:700,color:"var(--tx)"}}>{p}</div>
                 <div style={{fontSize:9,color:"var(--tx3)"}}>{posAssign[p]?.join(", ")||"—"}</div>
@@ -829,7 +854,7 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
         const visibel = (instruksi||[]).filter(i=>i.aktif && (i.targetRegu==="Semua"||String(i.targetRegu)===String(myRegu)));
         if(visibel.length===0) return null;
         return (
-          <div style={{background:"var(--card-solid)",border:"1.5px solid var(--dark-border)",borderRadius:12,overflow:"hidden",marginBottom:4}}>
+          <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden",marginBottom:4}}>
             <div style={{background:"linear-gradient(90deg,#dc2626,#ef4444)",padding:"8px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div style={{fontSize:12,fontWeight:800,color:"#fff"}}>🚨 Instruksi Pimpinan ({visibel.length})</div>
               <button onClick={()=>setTab("instruksi")} style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:6,padding:"3px 9px",fontSize:10.5,color:"#fff",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Lihat Semua →</button>
@@ -885,7 +910,7 @@ function JadwalTab({now,liburData,isAdmin,setTab}) {
           </div>
         ))}
       </div>
-      <div style={{background:"var(--card-solid)",border:"1.5px solid var(--dark-border)",borderRadius:12,overflow:"hidden"}}>
+      <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 70px 1.5fr",background:"var(--accent)",padding:"8px 12px"}}>
           {["Tanggal","Regu","Anggota"].map(h=><div key={h} style={{fontSize:10,fontWeight:800,color:"#fff",textTransform:"uppercase"}}>{h}</div>)}
         </div>
@@ -922,7 +947,7 @@ const encPosQR = (pos) => POS_QR_PREFIX + pos.replace(/ /g,"_");
 const decPosQR = (v) => v && v.startsWith(POS_QR_PREFIX) ? v.replace(POS_QR_PREFIX,"").replace(/_/g," ") : null;
 
 // ─── POS ──────────────────────────────────────────────────────────────────────
-function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,toast,canEdit,isAdmin}) {
+function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,toast,canEdit,isAdmin,currentUser}) {
   const members=REGU[reguHari]||[];
   const [mode,setMode]=useState("assign");   // "assign" | "rolling"
   const [scanOpen,setScanOpen]=useState(false);
@@ -942,13 +967,29 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
     }
     const asgn=posAssign[pos]||[]; const cap=POS_CAP[pos]||1;
     if(asgn.length>=cap){toast(`${pos} sudah penuh!`,false);return;}
-    setConfirm({pos,type:"assign"}); setSelectedMember("");
+    // Langsung assign nama yang sedang login
+    const myName = currentUser?.name;
+    if(!myName){toast("Tidak ada pengguna login!",false);return;}
+    if(asgn.includes(myName)){toast(`${myName} sudah ada di ${pos}!`,false);return;}
+    // Cek apakah sudah di pos lain, lepas dulu
+    const updated={...posAssign};
+    POS_LIST.forEach(p=>{ if(updated[p]) updated[p]=updated[p].filter(m=>m!==myName); });
+    updated[pos]=[...(updated[pos]||[]),myName];
+    setPosAssign(updated);
+    toast(`✓ ${myName} → ${pos}!`);
   };
 
   const doAssign=()=>{
-    if(!selectedMember){toast("Pilih anggota!",false);return;}
-    const updated={...posAssign,[confirm.pos]:[...(posAssign[confirm.pos]||[]),selectedMember]};
-    setPosAssign(updated); setConfirm(null); toast(`${selectedMember} → ${confirm.pos}!`);
+    const nameToAssign = isAdmin ? selectedMember : (currentUser?.name||"");
+    if(!nameToAssign){toast(isAdmin?"Pilih anggota!":"Tidak ada pengguna login!",false);return;}
+    const asgn=posAssign[confirm.pos]||[]; const cap=POS_CAP[confirm.pos]||1;
+    if(asgn.includes(nameToAssign)){toast(`${nameToAssign} sudah ada di ${confirm.pos}!`,false);return;}
+    if(asgn.length>=cap){toast(`${confirm.pos} sudah penuh!`,false);return;}
+    const updated={...posAssign};
+    // Lepas dari pos lain dulu
+    POS_LIST.forEach(p=>{ if(updated[p]) updated[p]=updated[p].filter(m=>m!==nameToAssign); });
+    updated[confirm.pos]=[...(updated[confirm.pos]||[]),nameToAssign];
+    setPosAssign(updated); setConfirm(null); toast(`✓ ${nameToAssign} → ${confirm.pos}!`);
   };
 
   // ── Rolling pos: pindah anggota dari pos lama ke pos baru ──
@@ -1000,7 +1041,7 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
       {/* ── MODE: PENEMPATAN ── */}
       {mode==="assign"&&(
         <>
-          {canEdit&&<div style={{background:"rgba(0,120,212,.1)",border:"1.5px solid var(--dark-border)",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"var(--accent)"}}>
+          {canEdit&&<div style={{background:"rgba(0,120,212,.1)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"var(--accent)"}}>
             📋 Scan QR di pos atau ketuk <strong>+ Tambah</strong> untuk menempatkan anggota.
             {isAdmin&&<span> Tombol <strong>QR</strong> untuk lihat kode QR pos.</span>}
           </div>}
@@ -1026,7 +1067,7 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
                       </div>
                     ))}
                     <div style={{marginTop:8,display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap"}}>
-                      {canEdit&&!isFull&&<Btn onClick={()=>{setConfirm({pos,type:"assign"});setSelectedMember("");}} color={col} size="sm"><IC n="plus" s={11}/> Tambah</Btn>}
+                      {canEdit&&!isFull&&<Btn onClick={()=>{ if(isAdmin){setConfirm({pos,type:"assign"});setSelectedMember("");} else { const myName=currentUser?.name; if(!myName) return; if((posAssign[pos]||[]).includes(myName)){toast(`${myName} sudah di ${pos}!`,false);return;} const upd={...posAssign}; POS_LIST.forEach(p2=>{if(upd[p2])upd[p2]=upd[p2].filter(m=>m!==myName);}); upd[pos]=[...(upd[pos]||[]),myName]; setPosAssign(upd); toast(`✓ ${myName} → ${pos}!`); }}} color={col} size="sm"><IC n="plus" s={11}/> Tambah</Btn>}
                       {isAdmin&&<Btn onClick={()=>setViewPosQR(pos)} color="var(--tx4)" variant="outline" size="sm"><IC n="qr" s={11}/> QR</Btn>}
                     </div>
                   </div>
@@ -1064,7 +1105,7 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
 
           {/* Log rolling hari ini */}
           {todayRolling.length>0&&(
-            <div style={{background:"var(--card-solid)",border:"1.5px solid var(--dark-border)",borderRadius:12,padding:"12px 14px"}}>
+            <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
               <div style={{fontSize:12,fontWeight:800,color:"var(--accent)",marginBottom:8}}>Log Rolling Hari Ini ({todayRolling.length})</div>
               {[...todayRolling].reverse().map(r=>(
                 <div key={r.id} style={{padding:"6px 0",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8}}>
@@ -1100,10 +1141,20 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
               <div style={{fontSize:18,fontWeight:900,color:POS_COL[confirm.pos]}}>{confirm.pos}</div>
               <div style={{fontSize:11,color:"var(--tx3)",marginTop:2}}>Kapasitas: {POS_CAP[confirm.pos]} · Terisi: {(posAssign[confirm.pos]||[]).length}</div>
             </div>
-            <Inp label="Pilih Anggota" value={selectedMember} onChange={e=>setSelectedMember(e.target.value)} as="select">
-              <option value="">— Pilih Anggota —</option>
-              {members.filter(m=>!allAssigned.includes(m)).map(m=><option key={m}>{m}</option>)}
-            </Inp>
+            {isAdmin ? (
+              <Inp label="Pilih Anggota" value={selectedMember} onChange={e=>setSelectedMember(e.target.value)} as="select">
+                <option value="">— Pilih Anggota —</option>
+                {members.filter(m=>!allAssigned.includes(m)).map(m=><option key={m}>{m}</option>)}
+              </Inp>
+            ) : (
+              <div style={{background:"var(--pill-active)",border:"1px solid var(--accent)",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:18}}>👤</span>
+                <div>
+                  <div style={{fontSize:11,color:"var(--tx3)"}}>Ditempatkan sebagai</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"var(--accent-light)"}}>{currentUser?.name}</div>
+                </div>
+              </div>
+            )}
             <div style={{display:"flex",gap:8}}><Btn onClick={doAssign} color={POS_COL[confirm.pos]} size="lg" full><IC n="ok" s={14}/> Tempatkan</Btn><Btn onClick={()=>setConfirm(null)} color="var(--tx4)" variant="outline">Batal</Btn></div>
           </div>
         )}
@@ -1128,20 +1179,20 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
 }
 
 // ─── STAND JAGA ───────────────────────────────────────────────────────────────
-function StandTab({standJaga,setStandJaga,posAssign,reguHari,toast,canEdit}) {
+function StandTab({standJaga,setStandJaga,posAssign,reguHari,toast,canEdit,currentUser}) {
   const [scanOpen,setScanOpen]=useState(false);
   const [confirm,setConfirm]=useState(null);
   const [officer,setOfficer]=useState("");
   const [notes,setNotes]=useState("");
   const members=REGU[reguHari]||[];
-  const onScan=(area)=>{ setScanOpen(false); const pos=getPos(area); setConfirm({area,pos:pos||"—"}); setOfficer(posAssign[pos]?.join(", ")||""); setNotes(""); };
+  const onScan=(area)=>{ setScanOpen(false); const pos=getPos(area); setConfirm({area,pos:pos||"—"}); setOfficer(currentUser?.name||posAssign[pos]?.join(", ")||""); setNotes(""); };
   const doConfirm=()=>{ setStandJaga([...standJaga,{id:Date.now(),ts:Date.now(),area:confirm.area,pos:confirm.pos,officer:officer||"—",notes}]); setConfirm(null); toast(`Stand jaga ${confirm.area} dicatat!`); };
   const todS=standJaga.filter(s=>new Date(s.ts).toDateString()===new Date().toDateString());
   return (
     <div>
       <PH title="Stand Jaga" sub="Scan QR untuk mencatat posisi stand jaga" action={canEdit&&<Btn onClick={()=>setScanOpen(true)} color="var(--accent)"><IC n="cam" s={13}/> Scan QR</Btn>}/>
       {!canEdit&&<ReadOnlyBanner reguHari={reguHari}/>}
-      <div style={{background:"var(--card-solid)",border:"1.5px solid var(--dark-border)",borderRadius:12,padding:"12px 14px"}}>
+      <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
         <div style={{fontSize:12,fontWeight:800,color:"var(--accent)",marginBottom:10}}>Log Hari Ini ({todS.length})</div>
         {todS.length===0&&<div style={{fontSize:12,color:"var(--tx3)"}}>Belum ada stand jaga</div>}
         {[...todS].reverse().map(s=>(
@@ -1175,7 +1226,7 @@ function StandTab({standJaga,setStandJaga,posAssign,reguHari,toast,canEdit}) {
 }
 
 // ─── PATROL ───────────────────────────────────────────────────────────────────
-function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin}) {
+function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUser}) {
   const [scanOpen,setScanOpen]=useState(false);
   const [manualOpen,setManualOpen]=useState(false);
   const [confirm,setConfirm]=useState(null);
@@ -1195,7 +1246,7 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin}) {
     if (lastScan && (now - lastScan.ts) < 60000) return;
     const pos=getPos(area);
     setConfirm({area,pos:pos||"—",isManual:false});
-    setOfficer(posAssign[pos]?.join(", ")||"");
+    setOfficer(currentUser?.name||posAssign[pos]?.join(", ")||"");
     setNotes("");
     setPhoto(null);
   };
@@ -1205,7 +1256,7 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin}) {
     const pos=getPos(manualArea);
     setManualOpen(false);
     setConfirm({area:manualArea,pos:pos||"—",isManual:true});
-    setOfficer(posAssign[pos]?.join(", ")||"");
+    setOfficer(currentUser?.name||posAssign[pos]?.join(", ")||"");
     setNotes("");
     setPhoto(null);
   };
@@ -1229,7 +1280,7 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin}) {
         </div>
       )}/>
       {!canEdit&&<ReadOnlyBanner reguHari={getReguHari(new Date())}/>}
-      <div style={{background:"var(--card-solid)",border:"1.5px solid var(--dark-border)",borderRadius:12,marginBottom:14,overflow:"hidden"}}>
+      <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,marginBottom:14,overflow:"hidden"}}>
         <div style={{padding:12}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10}}>
             {ALL_AREAS.map(area=>{
@@ -1237,7 +1288,7 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin}) {
               const cnt=patrols.filter(p=>p.areas?.includes(area)).length;
               const last=patrols.filter(p=>p.areas?.includes(area)).at(-1);
               return (
-                <div key={area} style={{background:"var(--card-solid)",border:"1.5px solid var(--dark-border)",borderRadius:10,padding:10,textAlign:"center"}}>
+                <div key={area} style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:10,padding:10,textAlign:"center"}}>
                   {isAdmin&&<div style={{display:"flex",justifyContent:"center",marginBottom:6}}><QRSvg value={encQR(area)} size={76}/></div>}
                   <div style={{fontSize:10.5,fontWeight:800,color:"var(--tx2)",marginBottom:2}}>{area}</div>
                   {pos&&<div style={{fontSize:9,color:POS_COL[pos]||"var(--tx4)",fontWeight:700,marginBottom:2}}>{pos}</div>}
@@ -1253,7 +1304,7 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin}) {
           </div>
         </div>
       </div>
-      <div style={{background:"var(--card-solid)",border:"1.5px solid var(--dark-border)",borderRadius:12,padding:"12px 14px"}}>
+      <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
         <div style={{fontSize:12,fontWeight:800,color:"var(--accent)",marginBottom:10}}>Log Patroli Hari Ini ({todP.length})</div>
         {todP.length===0&&<div style={{fontSize:11,color:"var(--tx3)"}}>Belum ada patroli</div>}
         {[...todP].reverse().slice(0,15).map(p=>(
@@ -1476,7 +1527,7 @@ function PkgTab({packages,setPackages,toast,canEdit}) {
 }
 function PC({p,upd,canEdit,onViewPhoto}) {
   const pen=p.status==="Belum Diambil";
-  return <div style={{background:pen?"rgba(255,204,0,.07)":"var(--card-solid)",border:`1.5px solid ${pen?"rgba(255,204,0,.4)":"var(--card-solid)"}`,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+  return <div style={{background:pen?"rgba(255,204,0,.07)":"var(--card-solid)",border:`1.5px solid ${pen?"rgba(255,204,0,.4)":"var(--border)"}`,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><div style={{display:"flex",gap:5,flexWrap:"wrap"}}><Bdg text={p.type} color="var(--accent)"/><Bdg text={p.status} color={pen?"#ffcc00":"var(--ok)"}/>{p.photo&&<Bdg text="📷" color="#a78bfa"/>}</div><span style={{fontSize:10.5,color:"var(--tx3)"}}>{fmtDT(p.ts)}</span></div>
     <div style={{fontSize:13,fontWeight:800,color:"var(--tx2)"}}>Untuk: {p.recipient}</div>
     <div style={{fontSize:11.5,color:"var(--tx3)"}}>Dari: {p.sender||"—"}</div>
@@ -1529,7 +1580,7 @@ function GuestTab({guests,setGuests,toast,canEdit}) {
 }
 function GC({g,co,canEdit,onViewPhoto}) {
   const act=g.status==="Masih Ada";
-  return <div style={{background:act?"rgba(167,139,250,.1)":"var(--card-solid)",border:`1.5px solid ${act?"rgba(167,139,250,.4)":"var(--card-solid)"}`,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+  return <div style={{background:act?"rgba(167,139,250,.1)":"var(--card-solid)",border:`1.5px solid ${act?"rgba(167,139,250,.4)":"var(--border)"}`,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><div style={{display:"flex",gap:5,flexWrap:"wrap"}}><Bdg text={g.type} color="#a78bfa"/><Bdg text={g.status} color={act?"#a78bfa":"var(--tx4)"}/>{g.photo&&<Bdg text="📷" color="#a78bfa"/>}</div><span style={{fontSize:10.5,color:"var(--tx3)"}}>{fmtDT(g.ts)}</span></div>
     <div style={{fontSize:13,fontWeight:800,color:"var(--tx2)"}}>{g.name}</div>
     <div style={{fontSize:11.5,color:"var(--tx3)"}}>{g.institution}</div>
@@ -1950,7 +2001,7 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
             <label style={{fontSize:12,fontWeight:700,color:"var(--tx)",display:"block",marginBottom:6}}>📝 Catatan Temuan (opsional)</label>
             <textarea value={cekCatatan} onChange={e=>setCekCatatan(e.target.value)}
               placeholder="Tulis temuan atau catatan saat cek serah terima... (kosongkan jika tidak ada)"
-              style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid var(--dark-border)",fontSize:12.5,fontFamily:"inherit",resize:"vertical",minHeight:80,boxSizing:"border-box",color:"var(--tx)"}}/>
+              style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1px solid var(--border)",fontSize:12.5,fontFamily:"inherit",resize:"vertical",minHeight:80,boxSizing:"border-box",color:"var(--tx)"}}/>
           </div>
           <div style={{background:"var(--green-card)",border:"1px solid #86efac",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11.5,color:"var(--ok)"}}>
             ✅ Dengan konfirmasi ini, Regu {myRegu} menyatakan telah menerima serah terima dari Regu {cekOpen.fromRegu}.
@@ -1971,7 +2022,7 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
           </div>
         </div>
         {/* Tombol auto-isi */}
-        <div style={{background:"rgba(0,120,212,.1)",border:"1.5px solid var(--dark-border)",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+        <div style={{background:"rgba(0,120,212,.1)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
           <div>
             <div style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>⚡ Isi Otomatis</div>
             <div style={{fontSize:10.5,color:"var(--tx3)"}}>Laporan terisi dari data patroli, insiden, paket & tamu hari ini</div>
@@ -2071,7 +2122,7 @@ function AbsenTab({absen,setAbsen,liburData,setLiburData,reguHari,toast,canEdit,
       </div>
 
       {/* Daftar absen anggota */}
-      <div style={{background:"var(--card-solid)",border:"1.5px solid var(--dark-border)",borderRadius:12,overflow:"hidden",marginBottom:14}}>
+      <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden",marginBottom:14}}>
         <div style={{background:"var(--accent)",padding:"8px 14px",display:"grid",gridTemplateColumns:"1fr auto",alignItems:"center"}}>
           <div style={{fontSize:11,fontWeight:800,color:"#fff"}}>Regu {reguViewDate} — Absensi</div>
           <div style={{fontSize:10,color:"rgba(255,255,255,.7)"}}>
@@ -2153,7 +2204,7 @@ function AbsenTab({absen,setAbsen,liburData,setLiburData,reguHari,toast,canEdit,
       )}
 
       {/* Rekap bulan ini */}
-      <div style={{background:"var(--card-solid)",border:"1.5px solid var(--dark-border)",borderRadius:12,overflow:"hidden"}}>
+      <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
         <div style={{background:"var(--accent)",padding:"8px 14px"}}>
           <div style={{fontSize:11,fontWeight:800,color:"#fff"}}>📊 Rekap Bulan {now.toLocaleDateString("id-ID",{month:"long",year:"numeric"})}</div>
         </div>
@@ -2777,7 +2828,7 @@ function AdminMemberTab({ patrols, standJaga, incidents, mutations }) {
     return (
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-          <button onClick={() => setSelectedMember(null)} style={{ background: "var(--green-card)", border: "1.5px solid var(--dark-border)", borderRadius: 8, padding: "6px 12px", fontSize: 12, color: "var(--accent)", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>← Kembali</button>
+          <button onClick={() => setSelectedMember(null)} style={{ background: "var(--green-card)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 12px", fontSize: 12, color: "var(--accent)", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>← Kembali</button>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: "var(--tx)" }}>{m.name}</h2>
         </div>
         <div style={{ background: `linear-gradient(135deg,${col},${col}bb)`, borderRadius: 14, padding: "16px 18px", marginBottom: 14, color: "#fff" }}>
@@ -2860,7 +2911,7 @@ function AdminMemberTab({ patrols, standJaga, incidents, mutations }) {
         <div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
             <div style={{ fontSize:12, fontWeight:800, color:"var(--tx2)" }}>Riwayat Aksi ({auditLogs.length})</div>
-            <button onClick={loadAudit} style={{ background:"rgba(0,120,212,.1)", border:"1.5px solid var(--dark-border)", borderRadius:7, padding:"5px 12px", fontSize:11, fontWeight:700, color:"var(--accent)", cursor:"pointer", fontFamily:"inherit" }}>🔄 Refresh</button>
+            <button onClick={loadAudit} style={{ background:"rgba(0,120,212,.1)", border:"1px solid var(--border)", borderRadius:7, padding:"5px 12px", fontSize:11, fontWeight:700, color:"var(--accent)", cursor:"pointer", fontFamily:"inherit" }}>🔄 Refresh</button>
           </div>
           {loadingAudit && <div style={{ textAlign:"center", padding:20, color:"var(--tx3)", fontSize:12 }}>Memuat...</div>}
           {!loadingAudit && auditLogs.length===0 && <div style={{ textAlign:"center", padding:20, color:"var(--tx3)", fontSize:12 }}>Belum ada log</div>}
@@ -3104,7 +3155,7 @@ function InstruksiTab({instruksi, setInstruksi, toast, isAdmin, currentUser}) {
                 {/* Admin: edit + arsip + hapus */}
                 {isAdmin&&(
                   <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                    <button onClick={()=>openEdit(ins)} style={{background:"rgba(0,120,212,.1)",border:"1px solid var(--dark-border)",borderRadius:6,padding:"3px 8px",fontSize:10,color:"var(--accent)",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Edit</button>
+                    <button onClick={()=>openEdit(ins)} style={{background:"rgba(0,120,212,.1)",border:"1px solid var(--border)",borderRadius:6,padding:"3px 8px",fontSize:10,color:"var(--accent)",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Edit</button>
                     <button onClick={()=>toggleAktif(ins.id)} style={{background:"rgba(255,204,0,.07)",border:"1px solid #fcd34d",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#ffcc00",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Arsipkan</button>
                     <button onClick={()=>hapus(ins.id)} style={{background:"rgba(255,50,50,.1)",border:"1px solid #fca5a5",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#dc2626",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Hapus</button>
                   </div>
@@ -3122,7 +3173,7 @@ function InstruksiTab({instruksi, setInstruksi, toast, isAdmin, currentUser}) {
                     <IC n="ok" s={15} c="var(--card-solid)"/> Tandai Selesai
                   </button>
                 ):(
-                  <button onClick={()=>toggleSelesai(ins.id)} style={{flex:1,background:"var(--card-solid)",border:"1.5px solid var(--dark-border)",borderRadius:9,padding:"10px",fontSize:13,fontWeight:800,color:"var(--accent-light)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                  <button onClick={()=>toggleSelesai(ins.id)} style={{flex:1,background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:9,padding:"10px",fontSize:13,fontWeight:800,color:"var(--accent-light)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
                     ↩ Tandai Belum Selesai
                   </button>
                 )}
@@ -3148,8 +3199,8 @@ function InstruksiTab({instruksi, setInstruksi, toast, isAdmin, currentUser}) {
                 </div>
                 {isAdmin&&(
                   <div style={{display:"flex",gap:5}}>
-                    <button onClick={()=>openEdit(ins)} style={{background:"rgba(0,120,212,.1)",border:"1px solid var(--dark-border)",borderRadius:6,padding:"3px 8px",fontSize:10,color:"var(--accent)",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️</button>
-                    <button onClick={()=>toggleAktif(ins.id)} style={{background:"rgba(0,120,212,.1)",border:"1px solid var(--dark-border)",borderRadius:6,padding:"3px 8px",fontSize:10,color:"var(--accent)",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Aktifkan</button>
+                    <button onClick={()=>openEdit(ins)} style={{background:"rgba(0,120,212,.1)",border:"1px solid var(--border)",borderRadius:6,padding:"3px 8px",fontSize:10,color:"var(--accent)",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️</button>
+                    <button onClick={()=>toggleAktif(ins.id)} style={{background:"rgba(0,120,212,.1)",border:"1px solid var(--border)",borderRadius:6,padding:"3px 8px",fontSize:10,color:"var(--accent)",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Aktifkan</button>
                     <button onClick={()=>hapus(ins.id)} style={{background:"rgba(255,50,50,.1)",border:"1px solid #fca5a5",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#dc2626",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Hapus</button>
                   </div>
                 )}
@@ -3262,7 +3313,7 @@ function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,curren
           <div style={{fontSize:28,fontWeight:900,color:actI>0?"#dc2626":"var(--ok)"}}>{actI}</div>
           <div style={{fontSize:10,color:"var(--tx3)"}}>{doneI} selesai</div>
         </div>
-        <div style={{background:"rgba(0,120,212,.1)",border:"1.5px solid var(--dark-border)",borderRadius:12,padding:"12px 14px"}}>
+        <div style={{background:"rgba(0,120,212,.1)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
           <div style={{fontSize:10,color:"var(--tx3)",marginBottom:2}}>Pos Terisi</div>
           <div style={{fontSize:28,fontWeight:900,color:"var(--accent)"}}>{filledPos.length}<span style={{fontSize:13,fontWeight:600,color:"var(--tx3)"}}>/{POS_LIST.length}</span></div>
           <div style={{fontSize:10,color:emptyPos.length>0?"#dc2626":"var(--tx4)"}}>{emptyPos.length>0?`⚠ ${emptyPos.length} kosong`:"Semua terisi ✓"}</div>
@@ -3453,7 +3504,7 @@ function InventarisTab({inventarisDaftar, setInventarisDaftar, inventarisCek, se
 
       {/* Ringkasan */}
       <div style={{display:"flex",gap:8,marginBottom:14}}>
-        <div style={{flex:1,background:"rgba(0,120,212,.1)",borderRadius:12,padding:"10px 12px",textAlign:"center",border:"1.5px solid var(--dark-border)"}}>
+        <div style={{flex:1,background:"rgba(0,120,212,.1)",borderRadius:12,padding:"10px 12px",textAlign:"center",border:"1px solid var(--border)"}}>
           <div style={{fontSize:20,fontWeight:800,color:"var(--accent)"}}>{totalCek}/{inventarisDaftar.length}</div>
           <div style={{fontSize:11,color:"var(--accent-light)",fontWeight:600}}>Sudah Dicek</div>
         </div>
@@ -3488,7 +3539,7 @@ function InventarisTab({inventarisDaftar, setInventarisDaftar, inventarisCek, se
                 )}
                 {isAdmin && (
                   <div style={{display:"flex",gap:4,flexShrink:0}}>
-                    <button onClick={()=>openEdit(b)} style={{background:"var(--card-solid)",border:"1px solid var(--dark-border)",borderRadius:6,padding:"4px 6px",cursor:"pointer",color:"var(--accent-light)",fontSize:10,fontWeight:700}}>Edit</button>
+                    <button onClick={()=>openEdit(b)} style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:6,padding:"4px 6px",cursor:"pointer",color:"var(--accent-light)",fontSize:10,fontWeight:700}}>Edit</button>
                     <button onClick={()=>hapusItem(b.id)} style={{background:"rgba(255,50,50,.1)",border:"1px solid #fecaca",borderRadius:6,padding:"4px 6px",cursor:"pointer",color:"#dc2626",fontSize:10,fontWeight:700}}>✕</button>
                   </div>
                 )}
@@ -3531,13 +3582,13 @@ function InventarisTab({inventarisDaftar, setInventarisDaftar, inventarisCek, se
             <label style={{fontSize:12,fontWeight:600,color:"var(--tx)",display:"block",marginBottom:4}}>Nama Barang *</label>
             <input value={formNama} onChange={e=>setFormNama(e.target.value)}
               placeholder="Contoh: Senter, APAR, Handy Talky..."
-              style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid var(--dark-border)",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",color:"var(--tx)"}}/>
+              style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1px solid var(--border)",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",color:"var(--tx)"}}/>
           </div>
           <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--tx)",display:"block",marginBottom:4}}>Jumlah</label>
             <input value={formJumlah} onChange={e=>setFormJumlah(e.target.value)}
               placeholder="Contoh: 2 unit, 1 set..."
-              style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid var(--dark-border)",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",color:"var(--tx)"}}/>
+              style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1px solid var(--border)",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",color:"var(--tx)"}}/>
           </div>
           <div style={{display:"flex",gap:8,marginTop:4}}>
             <Btn onClick={saveEdit} color="var(--accent)" size="lg" style={{flex:1}}>Simpan</Btn>
@@ -3739,7 +3790,7 @@ function App() {
     else root.classList.remove("light");
   }, [theme]);
 
-  const toggleTheme = () => setTheme(t => t === "dark" ? "light" : "dark");
+  // toggleTheme: use direct value (useLS does not support functional updater)
   const inactiveTimer = useRef(null);
 
   // ── Track status koneksi Firebase via custom event dari module script ──
@@ -3834,7 +3885,7 @@ function App() {
 
   const isAdmin = currentUser.isAdmin;
   // canEdit: admin selalu bisa, anggota hanya bisa jika regu-nya piket hari ini
-  const canEdit = isAdmin || (!currentUser.isAdmin && currentUser.regu === reguHari);
+  const canEdit = isAdmin || currentUser.regu === reguHari;
   const ACTIVE_NAV = isAdmin ? NAV_TABS_ADMIN : NAV_TABS;
 
   const MORE_TABS = [
@@ -3914,9 +3965,9 @@ function App() {
         {tab === "pimpinan" && <PimpinanTab now={now} patrols={patrols} incidents={incidents} posAssign={posAssign} instruksi={instruksi} mutations={mutations} currentUser={currentUser} />}
         {tab === "dashboard" && <DashTab now={now} shift={shift} reguHari={reguHari} posAssign={posAssign} incidents={incidents} packages={packages} guests={guests} patrols={patrols} standJaga={standJaga} mutations={mutations} posRollingLog={posRollingLog} liburData={liburData} setLiburData={setLiburData} instruksi={instruksi} currentUser={currentUser} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} />}
         {tab === "jadwal" && <JadwalTab now={now} liburData={liburData} isAdmin={isAdmin} setTab={setTab} />}
-        {tab === "pos" && <PosTab reguHari={reguHari} posAssign={posAssign} setPosAssign={setPosAssign} posRollingLog={posRollingLog} setPosRollingLog={setPosRollingLog} toast={toast} canEdit={canEdit} isAdmin={isAdmin} />}
-        {tab === "stand" && <StandTab standJaga={standJaga} setStandJaga={setStandJaga} posAssign={posAssign} reguHari={reguHari} toast={toast} canEdit={canEdit} />}
-        {tab === "patrol" && <PatrolTab posAssign={posAssign} patrols={patrols} setPatrols={setPatrols} toast={toast} canEdit={canEdit} isAdmin={isAdmin} />}
+        {tab === "pos" && <PosTab reguHari={reguHari} posAssign={posAssign} setPosAssign={setPosAssign} posRollingLog={posRollingLog} setPosRollingLog={setPosRollingLog} toast={toast} canEdit={canEdit} isAdmin={isAdmin} currentUser={currentUser} />}
+        {tab === "stand" && <StandTab standJaga={standJaga} setStandJaga={setStandJaga} posAssign={posAssign} reguHari={reguHari} toast={toast} canEdit={canEdit} currentUser={currentUser} />}
+        {tab === "patrol" && <PatrolTab posAssign={posAssign} patrols={patrols} setPatrols={setPatrols} toast={toast} canEdit={canEdit} isAdmin={isAdmin} currentUser={currentUser} />}
         {tab === "incident" && <IncTab incidents={incidents} setIncidents={setIncidents} posAssign={posAssign} toast={toast} canEdit={canEdit} />}
         {tab === "package" && <PkgTab packages={packages} setPackages={setPackages} toast={toast} canEdit={canEdit} />}
         {tab === "guest" && <GuestTab guests={guests} setGuests={setGuests} toast={toast} canEdit={canEdit} />}
