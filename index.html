@@ -208,6 +208,214 @@
     }
     .keluar-card { animation: cardSlideIn .25s ease both; }
   </style>
+<script>
+// ── Inline QR Code Generator (no CDN needed) ─────────────────────────────────
+(function(){
+  if(window.qrcodegen) return; // already loaded
+
+  // GF(256)
+  const EXP=new Uint8Array(512), LOG=new Uint8Array(256);
+  let x=1;
+  for(let i=0;i<255;i++){EXP[i]=x;LOG[x]=i;x<<=1;if(x&0x100)x^=0x11D;}
+  for(let i=255;i<512;i++) EXP[i]=EXP[i-255];
+  const gfMul=(a,b)=>(a&&b)?EXP[LOG[a]+LOG[b]]:0;
+
+  function rsGenPoly(n){
+    let g=[1];
+    for(let i=0;i<n;i++){
+      const g2=new Array(g.length+1).fill(0);
+      for(let j=0;j<g.length;j++){g2[j]^=g[j];g2[j+1]^=gfMul(g[j],EXP[i]);}
+      g=g2;
+    }
+    return g;
+  }
+  function rsEncode(data,nEc){
+    const g=rsGenPoly(nEc);
+    const msg=[...data,...new Array(nEc).fill(0)];
+    for(let i=0;i<data.length;i++){
+      const c=msg[i];
+      if(c) for(let j=0;j<g.length;j++) msg[i+j]^=gfMul(c,g[j]);
+    }
+    return msg.slice(data.length);
+  }
+
+  // version:(modules, data_cw, ec_per_block, num_blocks)
+  const VD={
+    2:[25,16,10,1],3:[29,26,15,1],4:[33,36,20,2],
+    5:[37,46,26,2],6:[41,60,18,2],7:[45,66,20,4],
+    8:[49,86,24,2],9:[53,100,30,3],10:[57,122,18,4],
+  };
+  const AP={
+    2:[],3:[6,22],4:[6,26],5:[6,30],6:[6,34],
+    7:[6,22,38],8:[6,24,42],9:[6,26,46],10:[6,28,50],
+  };
+  const FMT_MASK=0b101010000010010;
+  const FMT_GEN =0b10100110111;
+
+  function fmtEcc(d){
+    let r=d;
+    for(let i=0;i<10;i++) r=(r<<1)^((r>>9)?FMT_GEN:0);
+    return r&0x3FF;
+  }
+  function getFmt(eccBits,mask){
+    const d=(eccBits<<3)|mask;
+    return ((d<<10)|fmtEcc(d))^FMT_MASK;
+  }
+
+  function placeFormat(grid,n,fmt){
+    // top-left horizontal + vertical, top-right + bottom-left mirrors
+    const hr=[8,8,8,8,8,8,8,8,7,5,4,3,2,1,0];
+    const hc=[0,1,2,3,4,5,7,8,8,8,8,8,8,8,8];
+    for(let i=0;i<15;i++){
+      const bit=(fmt>>(14-i))&1;
+      grid[hr[i]][hc[i]]=bit;
+      grid[hc[i]][hr[i]]=bit;
+    }
+    // overwrite with mirrors
+    for(let i=0;i<8;i++) grid[8][n-8+i]=(fmt>>i)&1;
+    for(let i=0;i<7;i++) grid[n-7+i][8]=(fmt>>(6-i+8))&1;
+    grid[n-8][8]=(fmt>>7)&1;
+  }
+
+  function makeQR(text){
+    const bytes=[];
+    for(let i=0;i<text.length;i++) bytes.push(text.charCodeAt(i)&0xFF);
+
+    let version=null;
+    for(let v=2;v<=10;v++){
+      if((4+8+8*bytes.length)<=VD[v][1]*8){version=v;break;}
+    }
+    if(!version) throw new Error("Text too long");
+
+    const[n,totalCw,ecPb,nBlocks]=VD[version];
+    const dataPb=Math.floor(totalCw/nBlocks);
+
+    const bits=[];
+    const ab=(val,ln)=>{for(let i=ln-1;i>=0;i--)bits.push((val>>i)&1);};
+    ab(0b0100,4); ab(bytes.length,8);
+    for(const b of bytes) ab(b,8);
+    for(let i=0;i<Math.min(4,totalCw*8-bits.length);i++) bits.push(0);
+    while(bits.length%8) bits.push(0);
+    const pad=[0xEC,0x11]; let pi=0;
+    while(bits.length<totalCw*8){ab(pad[pi++%2],8);}
+
+    const cws=[];
+    for(let i=0;i<bits.length;i+=8){
+      cws.push(parseInt(bits.slice(i,i+8).join(''),2));
+    }
+
+    const bd=[],be=[];
+    let idx=0;
+    for(let i=0;i<nBlocks;i++){
+      const blk=cws.slice(idx,idx+dataPb); bd.push(blk);
+      be.push(rsEncode(blk,ecPb)); idx+=dataPb;
+    }
+
+    const final=[];
+    for(let i=0;i<Math.max(...bd.map(b=>b.length));i++)
+      for(const b of bd) if(i<b.length) final.push(b[i]);
+    for(let i=0;i<ecPb;i++) for(const b of be) final.push(b[i]);
+
+    const grid=Array.from({length:n},()=>new Array(n).fill(null));
+    const res =Array.from({length:n},()=>new Array(n).fill(false));
+
+    const sm=(r,c,v,rs=true)=>{
+      if(r>=0&&r<n&&c>=0&&c<n){grid[r][c]=v;if(rs)res[r][c]=true;}
+    };
+
+    // Finders
+    const finder=(r,c)=>{
+      for(let dr=-1;dr<8;dr++) for(let dc=-1;dc<8;dc++){
+        if(r+dr<0||r+dr>=n||c+dc<0||c+dc>=n) continue;
+        const ib=dr>=0&&dr<=6&&dc>=0&&dc<=6;
+        const ob=dr===0||dr===6||dc===0||dc===6;
+        const inn=dr>=2&&dr<=4&&dc>=2&&dc<=4;
+        sm(r+dr,c+dc,(ib&&(ob||inn))?1:0);
+      }
+    };
+    finder(0,0); finder(0,n-7); finder(n-7,0);
+
+    // Timing
+    for(let i=8;i<n-8;i++){sm(6,i,i%2===0?1:0);sm(i,6,i%2===0?1:0);}
+
+    // Dark module
+    sm(n-8,8,1);
+
+    // Alignment
+    const ap=AP[version]||[];
+    for(const r of ap) for(const c of ap){
+      if((r===6&&c===6)||(r===6&&c===ap[ap.length-1])||(r===ap[ap.length-1]&&c===6)) continue;
+      for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++){
+        sm(r+dr,c+dc,(Math.abs(dr)===2||Math.abs(dc)===2||(dr===0&&dc===0))?1:0);
+      }
+    }
+
+    // Format placeholder
+    for(let i=0;i<9;i++){res[8][i]=true;res[i][8]=true;}
+    for(let i=n-8;i<n;i++){res[8][i]=true;res[i][8]=true;}
+
+    const finalBits=[];
+    for(const byte of final) for(let i=7;i>=0;i--) finalBits.push((byte>>i)&1);
+
+    const maskFns=[
+      (r,c)=>(r+c)%2===0,
+      (r,c)=>r%2===0,
+      (r,c)=>c%3===0,
+      (r,c)=>(r+c)%3===0,
+      (r,c)=>(Math.floor(r/2)+Math.floor(c/3))%2===0,
+      (r,c)=>(r*c)%2+(r*c)%3===0,
+      (r,c)=>((r*c)%2+(r*c)%3)%2===0,
+      (r,c)=>((r+c)%2+(r*c)%3)%2===0,
+    ];
+
+    function zigzag(g2,mfn){
+      let bi=0,goUp=true,col=n-1;
+      while(col>=1){
+        if(col===6) col--;
+        const rows=goUp?[...Array(n).keys()].reverse():[...Array(n).keys()];
+        for(const r of rows){
+          for(const dc of[0,1]){
+            const c=col-dc;
+            if(c>=0&&c<n&&!res[r][c]){
+              const bit=bi<finalBits.length?finalBits[bi++]:0;
+              g2[r][c]=bit^(mfn(r,c)?1:0);
+            }
+          }
+        }
+        goUp=!goUp; col-=2;
+      }
+      return g2;
+    }
+
+    let bestScore=null,bestGrid=null;
+    for(let mi=0;mi<8;mi++){
+      const g2=grid.map(row=>[...row]);
+      zigzag(g2,maskFns[mi]);
+      placeFormat(g2,n,getFmt(0b01,mi));
+      let sc=0;
+      for(let r=0;r<n;r++){
+        let run=1;
+        for(let c=1;c<n;c++){
+          if(g2[r][c]===g2[r][c-1]) run++;
+          else{if(run>=5)sc+=run-2;run=1;}
+        }
+      }
+      if(bestScore===null||sc<bestScore){bestScore=sc;bestGrid=g2;}
+    }
+    return {size:n, getModule:(x,y)=>bestGrid[y][x]===1};
+  }
+
+  // Expose as window.qrcodegen compatible API
+  window.qrcodegen={
+    QrCode:{
+      Ecc:{LOW:0,MEDIUM:1,QUARTILE:2,HIGH:3},
+      encodeText:(text,ecc)=>makeQR(text),
+    }
+  };
+  window._qrLoading=false;
+  console.log("Inline QR generator loaded");
+})();
+</script>
 </head>
 <body>
 <div id="root"></div>
@@ -497,10 +705,12 @@ function QRSvg({ value, size=120 }) {
     if (window.qrcodegen) { generate(); return; }
     if (window._qrLoading) { const t=setInterval(()=>{ if(window.qrcodegen){clearInterval(t);generate();} },100); return ()=>clearInterval(t); }
     window._qrLoading = true;
-    const sc = document.createElement("script");
-    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodegen/1.8.0/qrcodegen.min.js";
-    sc.onload = () => { window._qrLoading=false; generate(); };
-    document.head.appendChild(sc);
+    // Inline QR generator — no CDN needed
+    (function inlineLoad(){
+      if(window.qrcodegen){generate();return;}
+      // Already being set up by the inline script in <head>
+      const t=setInterval(()=>{if(window.qrcodegen){clearInterval(t);generate();}},50);
+    })();
   }, [value]);
 
   if (!svgData) return (
