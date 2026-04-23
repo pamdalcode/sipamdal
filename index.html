@@ -636,70 +636,78 @@ function Btn({children,onClick,color="var(--accent)",size="md",variant="solid",d
 
 // ─── CAMERA QR SCANNER ────────────────────────────────────────────────────────
 function CamScanner({onScan,onClose,customDecode}) {
-  const vRef      = useRef(null);
-  const cRef      = useRef(null);
-  const stateRef  = useRef({ stream:null, raf:null, active:false, done:false });
-  const cbRef     = useRef({ onScan, customDecode });
-  cbRef.current   = { onScan, customDecode };
+  const vRef     = useRef(null);
+  const cRef     = useRef(null);
+  const stateRef = useRef({stream:null,raf:null,active:false,done:false});
+  const cbRef    = useRef({onScan,customDecode});
+  cbRef.current  = {onScan,customDecode};
 
-  const [status, setStatus] = useState("idle"); // idle | starting | live | hit | err
-  const [hitText, setHitText] = useState("");
-  const [errMsg,  setErrMsg]  = useState("");
-  const [jsReady, setJsReady] = useState(!!window.jsQR);
+  const [status,   setStatus]   = useState("idle"); // idle|starting|live|hit|err|notfound
+  const [hitText,  setHitText]  = useState("");
+  const [rawText,  setRawText]  = useState("");  // raw QR value untuk debug
+  const [errMsg,   setErrMsg]   = useState("");
+  const [scanCount,setScanCount]= useState(0);   // counter frame yg sudah di-scan
+  const [jsReady,  setJsReady]  = useState(!!window.jsQR||!!window.BarcodeDetector);
 
-  /* ── muat jsQR jika perlu ─────────────────────────────────── */
+  /* ── load jsQR ──────────────────────────────────────────────── */
   useEffect(()=>{
     if(window.BarcodeDetector||window.jsQR){setJsReady(true);return;}
     const sc=document.createElement("script");
     sc.src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js";
-    sc.onload=()=>{setJsReady(true);};
+    sc.onload=()=>setJsReady(true);
+    sc.onerror=()=>setErrMsg("⚠️ jsQR gagal dimuat. Gunakan pilih manual.");
     document.head.appendChild(sc);
   },[]);
 
-  /* ── hard stop: matikan stream + batalkan RAF ─────────────── */
+  /* ── stop kamera ────────────────────────────────────────────── */
   const hardStop = useCallback(()=>{
-    const st = stateRef.current;
-    st.active = false;
-    if(st.raf){ cancelAnimationFrame(st.raf); st.raf=null; }
-    if(st.stream){ st.stream.getTracks().forEach(t=>t.stop()); st.stream=null; }
-    if(vRef.current){ vRef.current.srcObject=null; }
-    setStatus(s=> s==="live"||s==="starting" ? "idle" : s);
+    const st=stateRef.current;
+    st.active=false;
+    if(st.raf){cancelAnimationFrame(st.raf);st.raf=null;}
+    if(st.stream){st.stream.getTracks().forEach(t=>t.stop());st.stream=null;}
+    if(vRef.current) vRef.current.srcObject=null;
+    setStatus(s=>(s==="live"||s==="starting")?"idle":s);
   },[]);
 
-  /* ── decode satu frame ────────────────────────────────────── */
+  /* ── decode frame ───────────────────────────────────────────── */
   const decodeFrame = useCallback(()=>{
-    const st = stateRef.current;
+    const st=stateRef.current;
     if(!st.active||st.done) return;
+    const v=vRef.current,c=cRef.current;
+    if(!v||!c||v.readyState<2){st.raf=requestAnimationFrame(decodeFrame);return;}
 
-    const v=vRef.current, c=cRef.current;
-    if(!v||!c||v.readyState<2){ st.raf=requestAnimationFrame(decodeFrame); return; }
-
-    const W=v.videoWidth||320, H=v.videoHeight||240;
+    const W=v.videoWidth||320,H=v.videoHeight||240;
     if(c.width!==W) c.width=W;
     if(c.height!==H) c.height=H;
     const ctx=c.getContext("2d",{willReadFrequently:true});
     ctx.drawImage(v,0,0,W,H);
+    setScanCount(n=>n+1);
 
     const tryResult=(raw)=>{
       if(!raw||st.done) return false;
+      setRawText(raw); // selalu tampilkan apa yang dibaca
       const {customDecode:cd}=cbRef.current;
-      const result = cd ? cd(raw) : (decQR(raw)||ALL_AREAS.find(a=>raw.includes(a))||null);
-      if(!result) return false;
+      const result=cd?cd(raw):(decQR(raw)||ALL_AREAS.find(a=>raw.includes(a))||null);
+      if(!result){
+        // QR terbaca tapi format tidak dikenali
+        setStatus("notfound");
+        setTimeout(()=>{ if(st.active) setStatus("live"); },2000);
+        return false;
+      }
       st.done=true; st.active=false;
       if(st.raf){cancelAnimationFrame(st.raf);st.raf=null;}
-      // jangan matikan stream dulu — biarkan terlihat saat hit
       setHitText(result);
       setStatus("hit");
-      setTimeout(()=>{
-        hardStop();
-        cbRef.current.onScan(result);
-      },500);
+      setTimeout(()=>{ hardStop(); cbRef.current.onScan(result); },800);
       return true;
     };
 
     if(window.BarcodeDetector){
       new window.BarcodeDetector({formats:["qr_code"]}).detect(c)
-        .then(bs=>{ if(!bs.length||!tryResult(bs[0].rawValue)) { if(st.active) st.raf=requestAnimationFrame(decodeFrame); } })
+        .then(bs=>{
+          if(!bs.length){ if(st.active) st.raf=requestAnimationFrame(decodeFrame); return; }
+          if(!tryResult(bs[0].rawValue)){ if(st.active) st.raf=requestAnimationFrame(decodeFrame); }
+        })
         .catch(()=>{ if(st.active) st.raf=requestAnimationFrame(decodeFrame); });
     } else if(window.jsQR){
       const img=ctx.getImageData(0,0,W,H);
@@ -712,11 +720,11 @@ function CamScanner({onScan,onClose,customDecode}) {
     }
   },[hardStop]);
 
-  /* ── mulai kamera ─────────────────────────────────────────── */
-  const start = useCallback(async()=>{
+  /* ── mulai kamera ───────────────────────────────────────────── */
+  const start=useCallback(async()=>{
     const st=stateRef.current;
     if(st.stream||st.active) return;
-    setStatus("starting"); setErrMsg(""); setHitText("");
+    setStatus("starting"); setErrMsg(""); setHitText(""); setRawText(""); setScanCount(0);
     st.done=false; st.active=false;
     try{
       const stream=await navigator.mediaDevices.getUserMedia({
@@ -726,13 +734,7 @@ function CamScanner({onScan,onClose,customDecode}) {
       const v=vRef.current;
       if(!v){stream.getTracks().forEach(t=>t.stop());st.stream=null;return;}
       v.srcObject=stream;
-      const go=()=>{
-        v.play().then(()=>{
-          st.active=true;
-          setStatus("live");
-          st.raf=requestAnimationFrame(decodeFrame);
-        }).catch(()=>{});
-      };
+      const go=()=>{ v.play().then(()=>{ st.active=true; setStatus("live"); st.raf=requestAnimationFrame(decodeFrame); }).catch(()=>{}); };
       if(v.readyState>=1) go(); else v.onloadedmetadata=go;
     }catch(e){
       setStatus("err");
@@ -740,80 +742,105 @@ function CamScanner({onScan,onClose,customDecode}) {
     }
   },[decodeFrame]);
 
-  /* ── mount: mulai otomatis; unmount: selalu stop ─────────── */
-  useEffect(()=>{
-    start();
-    return ()=>{ stateRef.current.done=true; hardStop(); };
-  },[]);   // eslint-disable-line
+  useEffect(()=>{ start(); return()=>{ stateRef.current.done=true; hardStop(); }; },[]);
 
   const handleManual=(val)=>{ hardStop(); cbRef.current.onScan(val); };
 
-  const isLive   = status==="live";
-  const isHit    = status==="hit";
-  const isErr    = status==="err";
-  const isStart  = status==="starting"||status==="idle";
-  const hasBD    = !!window.BarcodeDetector;
+  const isLive  = status==="live";
+  const isHit   = status==="hit";
+  const isErr   = status==="err";
+  const isStart = status==="starting"||status==="idle";
+  const isNotFound = status==="notfound";
+  const hasBD   = !!window.BarcodeDetector;
+  const hasDecoder = hasBD||!!window.jsQR;
 
   return (
     <div>
       {/* Viewfinder */}
       <div style={{position:"relative",background:"#000",minHeight:240,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-        <video ref={vRef} style={{width:"100%",maxHeight:270,objectFit:"cover",display:(isLive||isHit)?"block":"none"}} playsInline muted/>
+        <video ref={vRef} style={{width:"100%",maxHeight:270,objectFit:"cover",display:(isLive||isHit||isNotFound)?"block":"none"}} playsInline muted/>
         <canvas ref={cRef} style={{display:"none"}}/>
 
-        {/* Overlay + scanning line */}
-        {isLive&&(
+        {/* Bingkai scan */}
+        {(isLive||isNotFound)&&(
           <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
             <div style={{width:200,height:200,position:"relative"}}>
-              {/* Sudut bingkai */}
               {[["0%","0%","0","0"],["0%","auto","0","0"],["auto","0%","0","0"],["auto","auto","0","0"]].map(([t,b,r,l],i)=>(
                 <div key={i} style={{position:"absolute",top:t,bottom:b,right:r,left:l,width:28,height:28,
-                  borderTop:t==="0%"?"3px solid var(--accent-light)":"none",
-                  borderBottom:b==="0%"?"3px solid var(--accent-light)":"none",
-                  borderLeft:l==="0%"?"3px solid var(--accent-light)":"none",
-                  borderRight:r==="0%"?"3px solid var(--accent-light)":"none",
+                  borderTop:t==="0%"?`3px solid ${isNotFound?"#ff6b6b":"var(--accent-light)"}`:"none",
+                  borderBottom:b==="0%"?`3px solid ${isNotFound?"#ff6b6b":"var(--accent-light)"}`:"none",
+                  borderLeft:l==="0%"?`3px solid ${isNotFound?"#ff6b6b":"var(--accent-light)"}`:"none",
+                  borderRight:r==="0%"?`3px solid ${isNotFound?"#ff6b6b":"var(--accent-light)"}`:"none",
                   borderRadius:i===0?"8px 0 0 0":i===1?"0 0 0 8px":i===2?"0 8px 0 0":"0 0 8px 0"
                 }}/>
               ))}
-              {/* Garis scan */}
-              <div style={{position:"absolute",left:4,right:4,height:2,background:"var(--accent-light)",opacity:.85,animation:"sl 1.8s ease-in-out infinite"}}/>
-              {/* Area gelap di luar bingkai */}
+              <div style={{position:"absolute",left:4,right:4,height:2,background:isNotFound?"#ff6b6b":"var(--accent-light)",opacity:.85,animation:"sl 1.8s ease-in-out infinite"}}/>
               <div style={{position:"absolute",inset:-9999,boxShadow:"inset 0 0 0 9999px rgba(0,0,0,.55)",pointerEvents:"none"}}/>
             </div>
           </div>
         )}
 
-        {/* Hit */}
-        {isHit&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.5)"}}>
-          <div style={{background:"var(--ok)",color:"#fff",borderRadius:12,padding:"14px 24px",fontWeight:800,fontSize:15,textAlign:"center"}}>
-            <div style={{fontSize:28,marginBottom:6}}>✓</div>{hitText}
+        {/* ✓ Hit */}
+        {isHit&&(
+          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.6)"}}>
+            <div style={{background:"#16a34a",color:"#fff",borderRadius:14,padding:"16px 28px",fontWeight:800,fontSize:15,textAlign:"center",boxShadow:"0 4px 24px rgba(0,0,0,.4)"}}>
+              <div style={{fontSize:36,marginBottom:6}}>✅</div>
+              <div style={{fontSize:13,opacity:.85,marginBottom:4}}>QR Berhasil Dibaca!</div>
+              <div style={{fontSize:16}}>{hitText}</div>
+            </div>
           </div>
-        </div>}
+        )}
 
-        {/* Starting / idle */}
-        {isStart&&<div style={{textAlign:"center",color:"#fff",padding:28}}>
-          <IC n="cam" s={44} c="var(--accent-light)"/>
-          <div style={{marginTop:10,fontSize:13}}>{status==="starting"?"Memulai kamera...":"Kamera siap"}</div>
-        </div>}
+        {/* ✕ Format tidak dikenali */}
+        {isNotFound&&(
+          <div style={{position:"absolute",bottom:8,left:8,right:8}}>
+            <div style={{background:"rgba(220,38,38,.92)",color:"#fff",borderRadius:10,padding:"10px 14px",fontSize:12,fontWeight:700,textAlign:"center"}}>
+              ❌ QR terbaca tapi tidak dikenali sistem<br/>
+              <span style={{fontSize:10,fontWeight:400,opacity:.85}}>{rawText.slice(0,50)}{rawText.length>50?"...":""}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Starting */}
+        {isStart&&(
+          <div style={{textAlign:"center",color:"#fff",padding:28}}>
+            <IC n="cam" s={44} c="var(--accent-light)"/>
+            <div style={{marginTop:10,fontSize:13}}>{status==="starting"?"Memulai kamera...":"Kamera siap"}</div>
+          </div>
+        )}
 
         {/* Error */}
-        {isErr&&<div style={{textAlign:"center",color:"#fca5a5",padding:24,fontSize:12.5}}>
-          <div style={{fontSize:30,marginBottom:8}}>📵</div>{errMsg}
-        </div>}
+        {isErr&&(
+          <div style={{textAlign:"center",color:"#fca5a5",padding:24,fontSize:12.5}}>
+            <div style={{fontSize:30,marginBottom:8}}>📵</div>{errMsg}
+          </div>
+        )}
+      </div>
+
+      {/* Status bar */}
+      <div style={{padding:"8px 16px",background:"var(--card2)",borderBottom:"1px solid var(--border)"}}>
+        {/* Decoder status */}
+        {isLive&&(
+          hasBD
+            ? <div style={{fontSize:11,color:"var(--ok)",fontWeight:700}}>✓ BarcodeDetector aktif — arahkan ke QR</div>
+            : jsReady
+              ? <div style={{fontSize:11,color:"var(--ok)",fontWeight:700}}>✓ jsQR aktif — arahkan ke QR</div>
+              : <div style={{fontSize:11,color:"#ffcc00",fontWeight:700}}>⏳ Memuat decoder...</div>
+        )}
+        {/* Frame counter saat live */}
+        {isLive&&scanCount>0&&(
+          <div style={{fontSize:10,color:"var(--tx4)",marginTop:2}}>
+            🔍 Memindai... ({scanCount} frame)
+            {!hasDecoder&&" — decoder belum siap"}
+          </div>
+        )}
+        {errMsg&&!isErr&&<div style={{fontSize:11,color:"#ff6b6b"}}>{errMsg}</div>}
       </div>
 
       {/* Info + manual */}
       <div style={{padding:"12px 16px 16px"}}>
-        {/* Status decoder */}
-        {isLive&&!hasBD&&(
-          jsReady
-            ? <div style={{background:"rgba(74,222,128,.08)",border:"1px solid #86efac",borderRadius:8,padding:"7px 12px",marginBottom:10,fontSize:12,color:"var(--ok)"}}>✓ Decoder aktif — arahkan kamera ke QR code</div>
-            : <div style={{background:"rgba(255,204,0,.08)",border:"1px solid #fbbf24",borderRadius:8,padding:"7px 12px",marginBottom:10,fontSize:12,color:"#ffcc00"}}>⏳ Memuat decoder QR...</div>
-        )}
-
-        {/* Pilih manual */}
-        <div style={{fontSize:11,fontWeight:700,color:"var(--tx3)",marginBottom:7,textTransform:"uppercase",letterSpacing:.5}}>Pilih manual:</div>
-        <div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:5,marginBottom:12}}>
+        <div style={{fontSize:11,fontWeight:700,color:"var(--tx3)",marginBottom:7,textTransform:"uppercase",letterSpacing:.5}}>Atau pilih manual:</div>
+        <div style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:5,marginBottom:12}}>
           {customDecode
             ? POS_LIST.map(pos=>(
                 <button key={pos} onClick={()=>handleManual(pos)} style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:8,color:"var(--accent-light)",fontSize:13,fontWeight:600,padding:"10px 14px",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
@@ -832,8 +859,6 @@ function CamScanner({onScan,onClose,customDecode}) {
               ))
           }
         </div>
-
-        {/* Tombol */}
         <div style={{display:"flex",gap:8}}>
           {isLive
             ? <Btn onClick={hardStop} color="var(--tx4)" variant="outline">⏹ Stop Kamera</Btn>
