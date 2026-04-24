@@ -609,44 +609,37 @@ function useLS(key, init) {
 }
 
 // useFS: Firebase Firestore realtime sync + localStorage fallback
-// key = koleksi Firestore, misal "pad_inc", "pad_pkg", dst.
-// Data disimpan sebagai array di satu doc: "sipamdal/{key}" → {items:[...]}
+// Prinsip: SERVER SELALU MENANG. Tidak ada lagi localVer yang menyebabkan
+// device lain menolak update dari server.
 function useFS(key, init) {
-  const lsKey     = key;
-  const lsMetaKey = key + "__localVer"; // versi counter lokal
+  const lsKey = key;
 
   const [v, sv] = useState(() => {
     try { const s=localStorage.getItem(lsKey); return s?JSON.parse(s):init; } catch{return init;}
   });
 
-  // Ref untuk melacak versi lokal — naik setiap kali set() dipanggil
-  const localVer = useRef((() => {
-    try { return parseInt(localStorage.getItem(lsMetaKey)||"0",10); } catch{return 0;}
-  })());
+  // Flag: sedang ada write lokal yang belum dikonfirmasi server
+  const pendingWrite = useRef(false);
 
   useEffect(() => {
     const fb = window.__FB;
     if (!fb) return;
-    const { db, doc, collection, onSnapshot } = fb;
+    const { db, doc, onSnapshot } = fb;
     const ref = doc(db, "sipamdal", key);
-    const unsub = onSnapshot(ref, snap => {
+    const unsub = onSnapshot(ref, { includeMetadataChanges: true }, snap => {
       if (!snap.exists()) return;
-
-      // Cek apakah snapshot ini dari server (bukan cache lokal)
-      const fromCache = snap.metadata.fromCache;
-
-      // Ambil versi yang tersimpan di server (kalau ada)
-      const serverVer = snap.data().__localVer ?? 0;
-
-      // JANGAN overwrite kalau:
-      // 1. Data datang dari cache Firestore (offline), ATAU
-      // 2. Versi lokal LEBIH BARU dari versi server (artinya ada data lokal yang belum tersync)
-      // CATATAN: gunakan strict less-than agar device lain tetap menerima update dari server
-      if (fromCache) return;
-      if (serverVer < localVer.current) return;
-      // Reset localVer agar sesuai dengan server (mencegah drift versi antar device)
-      localVer.current = serverVer;
-
+      // Abaikan cache offline
+      if (snap.metadata.fromCache) return;
+      // Jika Firestore masih menunggu konfirmasi write kita sendiri, tunggu
+      if (snap.metadata.hasPendingWrites) return;
+      // Reset flag
+      pendingWrite.current = false;
+      // Jika masih ada antrian pending write lokal untuk key ini, jangan overwrite
+      try {
+        const q = JSON.parse(localStorage.getItem("pad_pending_writes")||"{}");
+        if (q[key]) return;
+      } catch {}
+      // Update state dari server
       const data = snap.data().items ?? init;
       sv(data);
       try { localStorage.setItem(lsKey, JSON.stringify(data)); } catch{}
@@ -655,32 +648,32 @@ function useFS(key, init) {
   }, [key]);
 
   const set = (x) => {
-    // Naikkan versi lokal
-    localVer.current = localVer.current + 1;
-    const ver = localVer.current;
-    try { localStorage.setItem(lsMetaKey, String(ver)); } catch{}
-
+    pendingWrite.current = true;
     sv(x);
     try { localStorage.setItem(lsKey, JSON.stringify(x)); } catch{}
 
     const fb = window.__FB;
     if (!fb) {
-      // Antre untuk di-flush saat Firebase siap
       try {
         const q = JSON.parse(localStorage.getItem("pad_pending_writes")||"{}");
-        q[key] = { items: x, __localVer: ver };
+        q[key] = { items: x };
         localStorage.setItem("pad_pending_writes", JSON.stringify(q));
       } catch {}
       return;
     }
     const { db, doc, setDoc } = fb;
-    // Simpan versi bersama data agar server tahu ini versi terbaru
-    setDoc(doc(db, "sipamdal", key), { items: x, __localVer: ver }).catch(err => {
-      console.error("Firebase save error:", key, err.code, err.message);
-      // Gagal (offline) — simpan ke antrian pending
+    setDoc(doc(db, "sipamdal", key), { items: x }).then(() => {
+      pendingWrite.current = false;
       try {
         const q = JSON.parse(localStorage.getItem("pad_pending_writes")||"{}");
-        q[key] = { items: x, __localVer: ver };
+        delete q[key];
+        localStorage.setItem("pad_pending_writes", JSON.stringify(q));
+      } catch {}
+    }).catch(err => {
+      console.error("Firebase save error:", key, err.code, err.message);
+      try {
+        const q = JSON.parse(localStorage.getItem("pad_pending_writes")||"{}");
+        q[key] = { items: x };
         localStorage.setItem("pad_pending_writes", JSON.stringify(q));
       } catch {}
     });
