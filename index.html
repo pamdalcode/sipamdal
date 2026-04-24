@@ -440,16 +440,20 @@
 
   // ── Signal ke React bahwa FB sudah siap + track koneksi ──────────────────────
   // Gunakan onSnapshot ke doc kecil sebagai probe koneksi
-  const probe = doc(db, "sipamdal", "pad_pos");
+  // Dokumen khusus probe — tidak pernah ditulis oleh fitur lain
+  const probe = doc(db, "sipamdal", "__ping__");
   let unsubProbe = null;
   let wasOffline = false; // lacak apakah sebelumnya offline
+  let offlineTimer = null; // debounce offline agar tidak kedip
 
   function startProbe() {
     if (unsubProbe) return;
-    unsubProbe = onSnapshot(probe,
+    unsubProbe = onSnapshot(probe, { includeMetadataChanges: true },
       async () => {
         // Firebase berhasil terhubung
         const nowOnline = !window.__FB_ONLINE; // baru saja kembali online
+        // Batalkan timer offline jika ada (sinyal hanya sesaat putus)
+        if (offlineTimer) { clearTimeout(offlineTimer); offlineTimer = null; }
         window.__FB_ONLINE = true;
         window.dispatchEvent(new Event("fb_online"));
 
@@ -476,19 +480,36 @@
               localStorage.removeItem("audit_queue");
             }
           } catch {}
+          // Flush pending data writes saat offline
+          try {
+            const pending = JSON.parse(localStorage.getItem("pad_pending_writes") || "{}");
+            const keys = Object.keys(pending);
+            if (keys.length) {
+              const { doc: fbDoc, setDoc } = window.__FB;
+              for (const k of keys) {
+                await setDoc(fbDoc(db, "sipamdal", k), pending[k]);
+              }
+              localStorage.removeItem("pad_pending_writes");
+            }
+          } catch {}
         }
       },
       () => {
-        // Firebase terputus
-        window.__FB_ONLINE = false;
-        wasOffline = true;
-        window.dispatchEvent(new Event("fb_offline"));
-        // Catat event OFFLINE ke antrian lokal
-        try {
-          const q = JSON.parse(localStorage.getItem("audit_queue") || "[]");
-          q.push({ action: "KONEKSI_OFFLINE", info: "Koneksi Firebase terputus", tsLocal: new Date().toISOString() });
-          localStorage.setItem("audit_queue", JSON.stringify(q.slice(-50)));
-        } catch {}
+        // Firebase terputus — debounce 4 detik agar tidak kedip karena sinyal lemah sesaat
+        if (offlineTimer) return;
+        offlineTimer = setTimeout(() => {
+          offlineTimer = null;
+          // Hanya set offline kalau memang belum online lagi
+          if (window.__FB_ONLINE) return;
+          wasOffline = true;
+          window.dispatchEvent(new Event("fb_offline"));
+          // Catat event OFFLINE ke antrian lokal
+          try {
+            const q = JSON.parse(localStorage.getItem("audit_queue") || "[]");
+            q.push({ action: "KONEKSI_OFFLINE", info: "Koneksi Firebase terputus", tsLocal: new Date().toISOString() });
+            localStorage.setItem("audit_queue", JSON.stringify(q.slice(-50)));
+          } catch {}
+        }, 4000);
       }
     );
   }
@@ -582,10 +603,17 @@ function useLS(key, init) {
 // key = koleksi Firestore, misal "pad_inc", "pad_pkg", dst.
 // Data disimpan sebagai array di satu doc: "sipamdal/{key}" → {items:[...]}
 function useFS(key, init) {
-  const lsKey = key;
+  const lsKey     = key;
+  const lsMetaKey = key + "__localVer"; // versi counter lokal
+
   const [v, sv] = useState(() => {
     try { const s=localStorage.getItem(lsKey); return s?JSON.parse(s):init; } catch{return init;}
   });
+
+  // Ref untuk melacak versi lokal — naik setiap kali set() dipanggil
+  const localVer = useRef((() => {
+    try { return parseInt(localStorage.getItem(lsMetaKey)||"0",10); } catch{return 0;}
+  })());
 
   useEffect(() => {
     const fb = window.__FB;
@@ -593,23 +621,56 @@ function useFS(key, init) {
     const { db, doc, collection, onSnapshot } = fb;
     const ref = doc(db, "sipamdal", key);
     const unsub = onSnapshot(ref, snap => {
-      if (snap.exists()) {
-        const data = snap.data().items ?? init;
-        sv(data);
-        try { localStorage.setItem(lsKey, JSON.stringify(data)); } catch{}
-      }
+      if (!snap.exists()) return;
+
+      // Cek apakah snapshot ini dari server (bukan cache lokal)
+      const fromCache = snap.metadata.fromCache;
+
+      // Ambil versi yang tersimpan di server (kalau ada)
+      const serverVer = snap.data().__localVer ?? 0;
+
+      // JANGAN overwrite kalau:
+      // 1. Data datang dari cache Firestore (offline), ATAU
+      // 2. Versi lokal lebih baru dari versi server
+      if (fromCache) return;
+      if (serverVer < localVer.current) return;
+
+      const data = snap.data().items ?? init;
+      sv(data);
+      try { localStorage.setItem(lsKey, JSON.stringify(data)); } catch{}
     }, () => {});
     return () => unsub();
   }, [key]);
 
   const set = (x) => {
+    // Naikkan versi lokal
+    localVer.current = localVer.current + 1;
+    const ver = localVer.current;
+    try { localStorage.setItem(lsMetaKey, String(ver)); } catch{}
+
     sv(x);
     try { localStorage.setItem(lsKey, JSON.stringify(x)); } catch{}
+
     const fb = window.__FB;
-    if (!fb) return;
+    if (!fb) {
+      // Antre untuk di-flush saat Firebase siap
+      try {
+        const q = JSON.parse(localStorage.getItem("pad_pending_writes")||"{}");
+        q[key] = { items: x, __localVer: ver };
+        localStorage.setItem("pad_pending_writes", JSON.stringify(q));
+      } catch {}
+      return;
+    }
     const { db, doc, setDoc } = fb;
-    setDoc(doc(db, "sipamdal", key), { items: x }).catch(err => {
+    // Simpan versi bersama data agar server tahu ini versi terbaru
+    setDoc(doc(db, "sipamdal", key), { items: x, __localVer: ver }).catch(err => {
       console.error("Firebase save error:", key, err.code, err.message);
+      // Gagal (offline) — simpan ke antrian pending
+      try {
+        const q = JSON.parse(localStorage.getItem("pad_pending_writes")||"{}");
+        q[key] = { items: x, __localVer: ver };
+        localStorage.setItem("pad_pending_writes", JSON.stringify(q));
+      } catch {}
     });
   };
 
@@ -1346,7 +1407,8 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
     const pos = decPosQR(raw) || POS_LIST.find(p=>raw.includes(p));
     if(!pos||!POS_LIST.includes(pos)){toast("QR tidak dikenali!",false);return;}
     if(mode==="rolling"){
-      setRollingTo(pos); return;
+      toast("Rolling membutuhkan nama anggota, bukan QR pos. Pilih anggota dari dropdown di bawah.", false);
+      return;
     }
     const asgn=posAssign[pos]||[]; const cap=POS_CAP[pos]||1;
     if(asgn.length>=cap){toast(`${pos} sudah penuh!`,false);return;}
@@ -3078,7 +3140,7 @@ function LoginScreen({ onLogin, userPins }) {
 }
 
 // ─── PROFILE / PROGRES TAB ────────────────────────────────────────────────────
-function ProfileTab({ currentUser, patrols, standJaga, incidents, mutations, onLogout, onChangePin, toast, userPins, setUserPins }) {
+function ProfileTab({ currentUser, patrols, standJaga, incidents, mutations, onLogout, toast, userPins, setUserPins }) {
   const [changePinOpen, setChangePinOpen] = useState(false);
   const [oldPin, setOldPin] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -3983,7 +4045,7 @@ function InventarisTab({inventarisDaftar, setInventarisDaftar, inventarisCek, se
 
   const STATUS_OPTS = ["Lengkap","Kurang","Rusak"];
   const STATUS_COLOR = {Lengkap:"var(--ok)", Kurang:"#ffcc00", Rusak:"#dc2626"};
-  const STATUS_BG = {"Hadir":"var(--pill-active)","Izin":"rgba(0,170,255,.1)","Sakit":"rgba(255,204,0,.1)","Alpha":"rgba(255,50,50,.1)","Libur":"rgba(167,139,250,.1)"};
+  const STATUS_BG = {"Lengkap":"var(--pill-active)","Kurang":"rgba(255,204,0,.1)","Rusak":"rgba(255,50,50,.1)"};
 
   const setCekStatus = (id, status) => {
     const updated = {...inventarisCek, [todayKey]: {...cekHari, [id]: {...(cekHari[id]||{}), status, waktu: new Date().toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}}};
@@ -4170,17 +4232,17 @@ function SearchTab({ packages, guests, mutations, incidents, patrols }) {
 
     if (filter === "semua" || filter === "insiden") {
       incidents.forEach(i => {
-        const hit = [i.title, i.desc, i.location, i.reportedBy]
+        const hit = [i.title, i.desc, i.pos, i.officer]
           .filter(Boolean).some(v => v.toLowerCase().includes(q));
-        if (hit) out.push({ kind: "insiden", icon: "⚠️", title: i.title || "Insiden", sub: `${i.location || ""}${i.reportedBy ? " · " + i.reportedBy : ""}`, status: i.status, ts: i.ts, color: i.status === "Selesai" ? "var(--tx4)" : "#ff4444", badge: i.status });
+        if (hit) out.push({ kind: "insiden", icon: "⚠️", title: i.title || "Insiden", sub: `${i.pos || ""}${i.officer ? " · " + i.officer : ""}`, status: i.status, ts: i.ts, color: i.status === "Selesai" ? "var(--tx4)" : "#ff4444", badge: i.status });
       });
     }
 
     if (filter === "semua" || filter === "mutasi") {
       mutations.forEach(m => {
-        const hit = [m.note, m.fromName, m.toName, String(m.fromRegu||"")]
+        const hit = [m.content, m.notes, String(m.fromRegu||""), String(m.toRegu||"")]
           .filter(Boolean).some(v => v.toLowerCase().includes(q));
-        if (hit) out.push({ kind: "mutasi", icon: "📋", title: `Mutasi Regu ${m.fromRegu || ""}`, sub: m.note || m.fromName || "", status: null, ts: m.ts, color: "var(--accent-light)", badge: null });
+        if (hit) out.push({ kind: "mutasi", icon: "📋", title: `Mutasi Regu ${m.fromRegu || ""}`, sub: m.content || m.notes || "", status: null, ts: m.ts, color: "var(--accent-light)", badge: null });
       });
     }
 
@@ -4500,18 +4562,21 @@ function App() {
     // Sync state awal dengan window.__FB_ONLINE (mungkin sudah di-set sebelum React mount)
     if (window.__FB_ONLINE !== undefined) setFbOnline(window.__FB_ONLINE);
 
-    const onOnline  = () => setFbOnline(true);
-    const onOffline = () => setFbOnline(false);
+    let debounceTimer = null;
+    const onOnline  = () => {
+      if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+      setFbOnline(true);
+    };
+    const onOffline = () => {
+      // Debounce di sisi React juga — jangan langsung merah
+      debounceTimer = setTimeout(() => { debounceTimer = null; setFbOnline(false); }, 1000);
+    };
     window.addEventListener("fb_online",  onOnline);
     window.addEventListener("fb_offline", onOffline);
-    // Fallback: cek setiap 5 detik
-    const poll = setInterval(() => {
-      if (window.__FB_ONLINE !== undefined) setFbOnline(window.__FB_ONLINE);
-    }, 5000);
     return () => {
       window.removeEventListener("fb_online",  onOnline);
       window.removeEventListener("fb_offline", onOffline);
-      clearInterval(poll);
+      if (debounceTimer) clearTimeout(debounceTimer);
     };
   }, []);
   const AUTO_LOGOUT_MS = 15 * 60 * 1000; // 15 menit
@@ -4704,7 +4769,7 @@ function App() {
         {tab === "dashboard" && <DashTab now={now} shift={shift} reguHari={reguHari} posAssign={posAssign} incidents={incidents} packages={packages} guests={guests} patrols={patrols} standJaga={standJaga} mutations={mutations} posRollingLog={posRollingLog} liburData={liburData} setLiburData={setLiburData} instruksi={instruksi} currentUser={currentUser} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} />}
         {tab === "jadwal" && <JadwalTab now={now} liburData={liburData} isAdmin={isAdmin} setTab={setTab} />}
         {tab === "pos" && <PosTab reguHari={reguHari} posAssign={posAssign} setPosAssign={setPosAssign} posRollingLog={posRollingLog} setPosRollingLog={setPosRollingLog} toast={toast} canEdit={canEdit} isAdmin={isAdmin} currentUser={currentUser} />}
-        {tab === "stand" && <StandTab standJaga={standJaga} setStandJaga={setStandJaga} posAssign={posAssign} reguHari={reguHari} toast={toast} canEdit={canEdit} currentUser={currentUser} />}
+        {tab === "stand" && <StandTab standJaga={standJaga} setStandJaga={setStandJaga} posAssign={posAssign} reguHari={reguHari} toast={toast} canEdit={canEdit} isAdmin={isAdmin} currentUser={currentUser} />}
         {tab === "patrol" && <PatrolTab posAssign={posAssign} patrols={patrols} setPatrols={setPatrols} toast={toast} canEdit={canEdit} isAdmin={isAdmin} currentUser={currentUser} />}
         {tab === "incident" && <IncTab incidents={incidents} setIncidents={setIncidents} posAssign={posAssign} toast={toast} canEdit={canEdit} />}
         {tab === "package" && <PkgTab packages={packages} setPackages={setPackages} toast={toast} canEdit={canEdit} />}
