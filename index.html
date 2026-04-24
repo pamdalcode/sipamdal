@@ -435,31 +435,6 @@
     }
   }
 
-  // Flush antrian saat kembali online + catat event koneksi
-  window.addEventListener("online", async () => {
-    // Catat event kembali online
-    try {
-      await writeAuditLog({ action:"KONEKSI_ONLINE", info:"Perangkat kembali terhubung ke jaringan" });
-    } catch {}
-    // Flush antrian offline
-    try {
-      const q = JSON.parse(localStorage.getItem("audit_queue")||"[]");
-      if (!q.length) return;
-      for (const entry of q)
-        await addDoc(collection(db, "sipamdal_audit"), {...entry, ts:serverTimestamp(), flushed:true});
-      localStorage.removeItem("audit_queue");
-    } catch {}
-  });
-
-  // Catat event offline
-  window.addEventListener("offline", () => {
-    try {
-      const q = JSON.parse(localStorage.getItem("audit_queue")||"[]");
-      q.push({ action:"KONEKSI_OFFLINE", info:"Perangkat kehilangan koneksi jaringan", tsLocal: new Date().toISOString() });
-      localStorage.setItem("audit_queue", JSON.stringify(q.slice(-50)));
-    } catch {}
-  });
-
   // ── Expose ke Babel script ────────────────────────────────────────────────────
   window.__FB = { db, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, getDocs, addDoc, serverTimestamp, query, orderBy, limit, writeAuditLog };
 
@@ -467,17 +442,62 @@
   // Gunakan onSnapshot ke doc kecil sebagai probe koneksi
   const probe = doc(db, "sipamdal", "pad_pos");
   let unsubProbe = null;
+  let wasOffline = false; // lacak apakah sebelumnya offline
+
   function startProbe() {
     if (unsubProbe) return;
     unsubProbe = onSnapshot(probe,
-      () => { window.__FB_ONLINE = true;  window.dispatchEvent(new Event("fb_online")); },
-      () => { window.__FB_ONLINE = false; window.dispatchEvent(new Event("fb_offline")); }
+      async () => {
+        // Firebase berhasil terhubung
+        const nowOnline = !window.__FB_ONLINE; // baru saja kembali online
+        window.__FB_ONLINE = true;
+        window.dispatchEvent(new Event("fb_online"));
+
+        // Jika sebelumnya offline, catat kembali online + flush antrian
+        if (wasOffline) {
+          wasOffline = false;
+          const tsOnline = new Date().toISOString();
+          try {
+            // Catat event KEMBALI_ONLINE ke Firestore
+            await addDoc(collection(db, "sipamdal_audit"), {
+              action: "KEMBALI_ONLINE",
+              info: "Koneksi Firebase pulih",
+              tsLocal: tsOnline,
+              ts: serverTimestamp()
+            });
+          } catch {}
+          // Flush antrian yang tersimpan saat offline
+          try {
+            const q = JSON.parse(localStorage.getItem("audit_queue") || "[]");
+            if (q.length) {
+              for (const entry of q) {
+                await addDoc(collection(db, "sipamdal_audit"), { ...entry, ts: serverTimestamp(), flushed: true });
+              }
+              localStorage.removeItem("audit_queue");
+            }
+          } catch {}
+        }
+      },
+      () => {
+        // Firebase terputus
+        window.__FB_ONLINE = false;
+        wasOffline = true;
+        window.dispatchEvent(new Event("fb_offline"));
+        // Catat event OFFLINE ke antrian lokal
+        try {
+          const q = JSON.parse(localStorage.getItem("audit_queue") || "[]");
+          q.push({ action: "KONEKSI_OFFLINE", info: "Koneksi Firebase terputus", tsLocal: new Date().toISOString() });
+          localStorage.setItem("audit_queue", JSON.stringify(q.slice(-50)));
+        } catch {}
+      }
     );
   }
+
   // Mulai probe setelah auth selesai
   signInAnonymously(auth).then(startProbe).catch(startProbe);
   window.addEventListener("offline", () => {
     window.__FB_ONLINE = false;
+    wasOffline = true;
     window.dispatchEvent(new Event("fb_offline"));
   });
 </script>
