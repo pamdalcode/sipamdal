@@ -178,6 +178,11 @@
       transition: background .2s, border-color .2s, color .2s;
     }
 
+    /* Light mode: patrol circle depth */
+    :root.light .patrol-circle {
+      box-shadow: 0 2px 8px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.08) !important;
+    }
+
     @media print {
       body > *:not(#root) { display: none !important; }
       .no-print { display: none !important; }
@@ -318,9 +323,12 @@ const POS_COL = { "Pos Utama": "var(--accent)", "Pos Asrama": "var(--accent-ligh
 const PATROL_AREAS = {
   "Pos Asrama": ["Gedung Asrama 2","Ruang Makan 2","Klinik","Gedung Kelas E","Gedung Kelas A","Ruang Makan 1"],
   "Gedung Utama": ["Gedung Utama","Gedung WI","Aula","Gedung Sarpras","Gedung Kepegawaian","Gedung Arsip"],
-  "Pos Utama": ["Area Pos Utama","Taman","Gedung Kantin","Masjid"],
-  "Pos Guest House": ["Guest House 1","Guest House 2","Guest House 3","Guest House 4","Gedung GOR"],
+  "Pos Utama": ["Area Pos Utama","Taman","Gedung Kantin","Masjid","Genset","Area Parkir"],
+  "Pos Guest House": ["Guest House 1","Guest House 2","Guest House 3","Guest House 4","Guest House 5","Gedung GOR"],
 };
+
+// Area yang hanya perlu cek "Kondisi Umum" (tanpa jendela/pintu/lampu/inventaris)
+const AREA_SIMPLE_CHECKLIST = new Set(["Genset","Area Parkir"]);
 
 const QR_PREFIX = "BBPKA2-PAMDAL-";
 const encQR = (a) => QR_PREFIX + a.replace(/ /g,"_");
@@ -497,8 +505,27 @@ function QRSvg({ value, size=120 }) {
 }
 
 // ─── UI PRIMITIVES ────────────────────────────────────────────────────────────
-function Modal({open,onClose,title,children,wide,noPad}) {
+function Modal({open,onClose,title,children,wide,noPad,bottom}) {
   if(!open) return null;
+  if(bottom) return (
+    <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",flexDirection:"column",background:"var(--scrim)",backdropFilter:"blur(12px) saturate(1.3)"}} onClick={onClose}>
+      {/* Tap area atas untuk tutup */}
+      <div style={{flex:"0 0 48px"}}/>
+      {/* Sheet — mulai dari 48px dari atas, isi sisa layar */}
+      <div onClick={e=>e.stopPropagation()} style={{flex:1,background:"var(--card-solid)",borderRadius:"20px 20px 0 0",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,.5)",color:"var(--tx)",animation:"sheetUp .28s cubic-bezier(.22,1,.36,1)",overflow:"hidden"}}>
+        {/* Drag handle */}
+        <div style={{width:40,height:4,background:"var(--border2)",borderRadius:4,margin:"12px auto 0",flexShrink:0}}/>
+        {/* Header */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 20px 12px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+          <h3 style={{margin:0,fontSize:15,fontWeight:800,color:"var(--tx2)"}}>{title}</h3>
+          <button onClick={onClose} style={{background:"var(--card2)",border:"none",borderRadius:8,cursor:"pointer",padding:6,display:"flex"}}><IC n="x" s={17} c="var(--accent-light)"/></button>
+        </div>
+        {/* Scrollable content */}
+        <div style={{overflowY:"auto",flex:1,padding:noPad?"0":"16px 20px 40px",WebkitOverflowScrolling:"touch"}}>{children}</div>
+      </div>
+      <style>{`@keyframes sheetUp{from{transform:translateY(60%);opacity:.6}to{transform:translateY(0);opacity:1}}`}</style>
+    </div>
+  );
   return (
     <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--scrim)",backdropFilter:"blur(16px) saturate(1.4)",padding:12}}>
       <div style={{background:"var(--card-solid)",borderRadius:20,width:"100%",maxWidth:wide?720:500,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(30,58,138,.18)",color:"var(--tx)"}}>
@@ -997,35 +1024,11 @@ const decPosQR = (v) => v && v.startsWith(POS_QR_PREFIX) ? v.replace(POS_QR_PREF
 // ─── POS ──────────────────────────────────────────────────────────────────────
 function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,toast,canEdit,isAdmin,currentUser}) {
   const members=REGU[reguHari]||[];
-  const [mode,setMode]=useState("assign");   // "assign" | "rolling"
-  const [scanOpen,setScanOpen]=useState(false);
+  const [mode,setMode]=useState("assign");
   const [confirm,setConfirm]=useState(null);
   const [selectedMember,setSelectedMember]=useState("");
   const [rollingFrom,setRollingFrom]=useState("");
   const [rollingTo,setRollingTo]=useState("");
-  const [viewPosQR,setViewPosQR]=useState(null);
-
-  // ── Tempatkan anggota ke pos (scan QR / manual) ──
-  const onScanPos=(raw)=>{
-    setScanOpen(false);
-    const pos = decPosQR(raw) || POS_LIST.find(p=>raw.includes(p));
-    if(!pos||!POS_LIST.includes(pos)){toast("QR tidak dikenali!",false);return;}
-    if(mode==="rolling"){
-      setRollingTo(pos); return;
-    }
-    const asgn=posAssign[pos]||[]; const cap=POS_CAP[pos]||1;
-    if(asgn.length>=cap){toast(`${pos} sudah penuh!`,false);return;}
-    // Langsung assign nama yang sedang login
-    const myName = currentUser?.name;
-    if(!myName){toast("Tidak ada pengguna login!",false);return;}
-    if(asgn.includes(myName)){toast(`${myName} sudah ada di ${pos}!`,false);return;}
-    // Cek apakah sudah di pos lain, lepas dulu
-    const updated={...posAssign};
-    POS_LIST.forEach(p=>{ if(updated[p]) updated[p]=updated[p].filter(m=>m!==myName); });
-    updated[pos]=[...(updated[pos]||[]),myName];
-    setPosAssign(updated);
-    toast(`✓ ${myName} → ${pos}!`);
-  };
 
   const doAssign=()=>{
     const nameToAssign = isAdmin ? selectedMember : (currentUser?.name||"");
@@ -1070,11 +1073,7 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
 
   return (
     <div>
-      <PH title="Penempatan Pos" sub={`Regu ${reguHari}: ${members.join(", ")}`} action={canEdit&&(
-        <div style={{display:"flex",gap:6}}>
-          <Btn onClick={()=>setScanOpen(true)} color="var(--accent)" size="sm"><IC n="cam" s={12}/> Scan</Btn>
-        </div>
-      )}/>
+      <PH title="Penempatan Pos" sub={`Regu ${reguHari}: ${members.join(", ")}`}/>
       {!canEdit&&<ReadOnlyBanner reguHari={reguHari}/>}
 
       {/* Tab Mode */}
@@ -1090,8 +1089,7 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
       {mode==="assign"&&(
         <>
           {canEdit&&<div style={{background:"rgba(0,120,212,.1)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"var(--accent)"}}>
-            📋 Scan QR di pos atau ketuk <strong>+ Tambah</strong> untuk menempatkan anggota.
-            {isAdmin&&<span> Tombol <strong>QR</strong> untuk lihat kode QR pos.</span>}
+            📋 Ketuk <strong>+ Tambah</strong> untuk menempatkan anggota ke pos.
           </div>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             {POS_LIST.map(pos=>{
@@ -1116,7 +1114,6 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
                     ))}
                     <div style={{marginTop:8,display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap"}}>
                       {canEdit&&!isFull&&<Btn onClick={()=>{ if(isAdmin){setConfirm({pos,type:"assign"});setSelectedMember("");} else { const myName=currentUser?.name; if(!myName) return; if((posAssign[pos]||[]).includes(myName)){toast(`${myName} sudah di ${pos}!`,false);return;} const upd={...posAssign}; POS_LIST.forEach(p2=>{if(upd[p2])upd[p2]=upd[p2].filter(m=>m!==myName);}); upd[pos]=[...(upd[pos]||[]),myName]; setPosAssign(upd); toast(`✓ ${myName} → ${pos}!`); }}} color={col} size="sm"><IC n="plus" s={11}/> Tambah</Btn>}
-                      {isAdmin&&<Btn onClick={()=>setViewPosQR(pos)} color="var(--tx4)" variant="outline" size="sm"><IC n="qr" s={11}/> QR</Btn>}
                     </div>
                   </div>
                 </div>
@@ -1147,7 +1144,6 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
             </Inp>
             <div style={{display:"flex",gap:8,marginTop:4}}>
               <Btn onClick={doRolling} color="var(--accent)" size="lg" full><IC n="rot" s={14}/> Konfirmasi Rolling</Btn>
-              {isAdmin&&<Btn onClick={()=>setScanOpen(true)} color="var(--tx4)" variant="outline">Scan QR</Btn>}
             </div>
           </div>
 
@@ -1170,18 +1166,9 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
         </div>
       )}
 
-      {/* Scanner Modal */}
-      <Modal open={scanOpen} onClose={()=>setScanOpen(false)} title="Scan QR Pos" noPad>
-        <CamScanner
-          onScan={onScanPos}
-          onClose={()=>setScanOpen(false)}
-          customAreas={POS_LIST}
-          customDecode={raw=>{ const p=decPosQR(raw)||POS_LIST.find(p=>raw.includes(p)); return POS_LIST.includes(p)?p:null; }}
-        />
-      </Modal>
-
+      {/* CamScanner pos dihapus — penempatan via tombol Tambah */}
       {/* Confirm assign */}
-      <Modal open={!!confirm} onClose={()=>setConfirm(null)} title={`Tempatkan ke ${confirm?.pos}`}>
+      <Modal open={!!confirm} onClose={()=>setConfirm(null)} title={`Tempatkan ke ${confirm?.pos}`} bottom>
         {confirm&&(
           <div>
             <div style={{background:POS_COL[confirm.pos]+"14",borderRadius:10,padding:"12px",marginBottom:14,textAlign:"center",border:`1.5px solid ${POS_COL[confirm.pos]}30`}}>
@@ -1208,38 +1195,66 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
         )}
       </Modal>
 
-      {/* QR Pos — hanya admin */}
-      {isAdmin&&<Modal open={!!viewPosQR} onClose={()=>setViewPosQR(null)} title={`QR Pos: ${viewPosQR}`}>
-        {viewPosQR&&(
-          <div style={{textAlign:"center"}}>
-            <div style={{background:"var(--card-solid)",border:`2px solid ${POS_COL[viewPosQR]}`,borderRadius:14,padding:18,display:"inline-block",marginBottom:10}}>
-              <QRSvg value={encPosQR(viewPosQR)} size={190}/>
-              <div style={{marginTop:8,fontSize:13,fontWeight:800,color:"var(--tx2)"}}>{viewPosQR}</div>
-              <div style={{fontSize:10,color:"var(--tx3)"}}>BBPKA II Jatinangor — Scan untuk penempatan</div>
-            </div>
-            <div style={{color:"var(--tx3)",fontSize:12,marginBottom:12}}>Screenshot & cetak, tempel di {viewPosQR}</div>
-            <Btn onClick={()=>setViewPosQR(null)} color="var(--accent)">Tutup</Btn>
-          </div>
-        )}
-      </Modal>}
+      {/* QR Pos modal dihapus — tidak lagi digunakan */}
     </div>
   );
 }
 
 // ─── STAND JAGA ───────────────────────────────────────────────────────────────
 function StandTab({standJaga,setStandJaga,posAssign,reguHari,toast,canEdit,currentUser,isAdmin=false}) {
-  const [scanOpen,setScanOpen]=useState(false);
   const [confirm,setConfirm]=useState(null);
   const [officer,setOfficer]=useState("");
   const [notes,setNotes]=useState("");
   const members=REGU[reguHari]||[];
-  const onScan=(area)=>{ setScanOpen(false); const pos=getPos(area); setConfirm({area,pos:pos||"—"}); setOfficer(currentUser?.name||posAssign[pos]?.join(", ")||""); setNotes(""); };
+  const onScan=(area)=>{ const pos=getPos(area); setConfirm({area,pos:pos||"—"}); setOfficer(currentUser?.name||posAssign[pos]?.join(", ")||""); setNotes(""); };
   const doConfirm=()=>{ setStandJaga([...standJaga,{id:Date.now(),ts:Date.now(),area:confirm.area,pos:confirm.pos,officer:officer||"—",notes}]); setConfirm(null); toast(`Stand jaga ${confirm.area} dicatat!`); };
   const todS=standJaga.filter(s=>new Date(s.ts).toDateString()===new Date().toDateString());
   return (
     <div>
-      <PH title="Stand Jaga" sub="Scan QR untuk mencatat posisi stand jaga" action={canEdit&&<Btn onClick={()=>setScanOpen(true)} color="var(--accent)"><IC n="cam" s={13}/> Scan QR</Btn>}/>
+      <PH title="Stand Jaga" sub="Ketuk nama gedung untuk mencatat posisi stand jaga"/>
       {!canEdit&&<ReadOnlyBanner reguHari={reguHari}/>}
+
+      {/* Circle tap menu gedung per pos */}
+      {canEdit&&(
+        <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,padding:"14px",marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:800,color:"var(--accent)",marginBottom:14,textTransform:"uppercase",letterSpacing:.5}}>Pilih Gedung / Area</div>
+          {Object.entries(PATROL_AREAS).map(([pos,areas])=>(
+            <div key={pos} style={{marginBottom:16}}>
+              <div style={{fontSize:10.5,fontWeight:800,color:POS_COL[pos]||"var(--accent)",textTransform:"uppercase",letterSpacing:.6,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+                <div style={{width:7,height:7,borderRadius:"50%",background:POS_COL[pos]||"var(--accent)",flexShrink:0}}/>
+                {pos}
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+                {areas.map(area=>{
+                  const col=POS_COL[pos]||"var(--accent)";
+                  const recentStand=todS.filter(s=>s.area===area).at(-1);
+                  return (
+                    <div key={area} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,width:76}}>
+                      <button
+                        onClick={()=>onScan(area)}
+                        style={{
+                          width:70,height:70,borderRadius:"50%",
+                          background:recentStand?`${col}20`:"var(--card2)",
+                          border:`2.5px solid ${recentStand?col:col+"50"}`,
+                          cursor:"pointer",
+                          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                          gap:2,padding:6,
+                          boxShadow:recentStand?`0 0 10px ${col}44`:"none",
+                          transition:"all .15s",
+                          position:"relative",
+                        }}>
+                        {recentStand&&<div style={{position:"absolute",top:2,right:2,width:10,height:10,borderRadius:"50%",background:"var(--ok)",border:"2px solid var(--card-solid)"}}/>}
+                        <span style={{fontSize:9.5,fontWeight:800,color:recentStand?col:"var(--tx2)",textAlign:"center",lineHeight:1.25,wordBreak:"break-word"}}>{area}</span>
+                        {recentStand&&<span style={{fontSize:8.5,color:"var(--ok)",fontWeight:700}}>{fmtT(recentStand.ts)}</span>}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
         <div style={{fontSize:12,fontWeight:800,color:"var(--accent)",marginBottom:10}}>Log Hari Ini ({todS.length})</div>
         {todS.length===0&&<div style={{fontSize:12,color:"var(--tx3)"}}>Belum ada stand jaga</div>}
@@ -1254,8 +1269,8 @@ function StandTab({standJaga,setStandJaga,posAssign,reguHari,toast,canEdit,curre
           </div>
         ))}
       </div>
-      <Modal open={scanOpen} onClose={()=>setScanOpen(false)} title="Scan QR — Stand Jaga" noPad><CamScanner onScan={onScan} onClose={()=>setScanOpen(false)}/></Modal>
-      <Modal open={!!confirm} onClose={()=>setConfirm(null)} title="Konfirmasi Stand Jaga">
+      {/* CamScanner dihapus — diganti tap lingkaran gedung */}
+      <Modal open={!!confirm} onClose={()=>setConfirm(null)} title="Konfirmasi Stand Jaga" bottom>
         {confirm&&(
           <div>
             <div style={{background:"rgba(0,120,212,.1)",borderRadius:10,padding:"12px 16px",marginBottom:14,textAlign:"center"}}>
@@ -1289,44 +1304,50 @@ function StandTab({standJaga,setStandJaga,posAssign,reguHari,toast,canEdit,curre
 }
 
 // ─── PATROL ───────────────────────────────────────────────────────────────────
+const CHECKLIST_ITEMS = [
+  {id:"jendela", emoji:"🪟", label:"Jendela"},
+  {id:"pintu",   emoji:"🚪", label:"Pintu"},
+  {id:"lampu",   emoji:"💡", label:"Lampu"},
+  {id:"inventaris", emoji:"📦", label:"Barang Inventaris"},
+  {id:"umum",    emoji:"✅", label:"Kondisi Umum"},
+];
+const CHECKLIST_ITEMS_SIMPLE = [
+  {id:"umum", emoji:"✅", label:"Kondisi Umum"},
+];
+const getChecklistItems = (area) => AREA_SIMPLE_CHECKLIST.has(area) ? CHECKLIST_ITEMS_SIMPLE : CHECKLIST_ITEMS;
+const CHECKLIST_STATUS = ["—","Baik","Rusak","Kurang"];
+const CHECKLIST_COL    = {"—":"var(--tx4)","Baik":"var(--ok)","Rusak":"var(--r)","Kurang":"#f8c100"};
+
 function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUser}) {
-  const [scanOpen,setScanOpen]=useState(false);
-  const [manualOpen,setManualOpen]=useState(false);
   const [confirm,setConfirm]=useState(null);
   const [officer,setOfficer]=useState("");
   const [notes,setNotes]=useState("");
   const [photo,setPhoto]=useState(null);
-  const [viewQR,setViewQR]=useState(null);
   const [viewPhoto,setViewPhoto]=useState(null);
-  const [manualArea,setManualArea]=useState("");
+  const [checklist,setChecklist]=useState({});
   const fileRef=useRef();
 
   const onScan=(area)=>{
-    setScanOpen(false);
-    // Blok diam-diam jika area di-scan < 1 menit lalu
-    const now = Date.now();
-    const lastScan = patrols.filter(p=>p.areas?.includes(area)).at(-1);
-    if (lastScan && (now - lastScan.ts) < 60000) return;
     const pos=getPos(area);
     setConfirm({area,pos:pos||"—",isManual:false});
     setOfficer(currentUser?.name||posAssign[pos]?.join(", ")||"");
     setNotes("");
     setPhoto(null);
+    setChecklist({});
   };
 
-  const onManual=()=>{
-    if(!manualArea){toast("Pilih area dulu!",false);return;}
-    const pos=getPos(manualArea);
-    setManualOpen(false);
-    setConfirm({area:manualArea,pos:pos||"—",isManual:true});
+  const onManual=(area)=>{
+    const pos=getPos(area);
+    setConfirm({area,pos:pos||"—",isManual:false});
     setOfficer(currentUser?.name||posAssign[pos]?.join(", ")||"");
     setNotes("");
     setPhoto(null);
+    setChecklist({});
   };
 
   const doP=()=>{
     if(!photo){toast("📷 Foto bukti wajib diisi!",false);return;}
-    setPatrols([...patrols,{id:Date.now(),ts:Date.now(),pos:confirm.pos,officer:officer||"—",areas:[confirm.area],notes,photo,qrScan:!confirm.isManual,isManual:confirm.isManual}]);
+    setPatrols([...patrols,{id:Date.now(),ts:Date.now(),pos:confirm.pos,officer:officer||"—",areas:[confirm.area],notes,photo,checklist,qrScan:true,isManual:false}]);
     setConfirm(null);
     toast(`Patroli ${confirm.area} dicatat!`);
   };
@@ -1334,33 +1355,61 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
   const removePhoto=()=>{ setPhoto(null); if(fileRef.current) fileRef.current.value=""; };
 
   const todP=patrols.filter(p=>new Date(p.ts).toDateString()===new Date().toDateString());
+  const doneAreas=ALL_AREAS.filter(a=>patrols.some(p=>p.areas?.includes(a)));
+  const progressPct=Math.round((doneAreas.length/ALL_AREAS.length)*100);
   return (
     <div>
-      <PH title="Patroli QR" sub="Scan QR + foto bukti wajib sebagai validasi" action={canEdit&&(
-        <div style={{display:"flex",gap:6}}>
-          <Btn onClick={()=>setScanOpen(true)} color="var(--ok)"><IC n="cam" s={13}/> Scan QR</Btn>
-          <Btn onClick={()=>{setManualArea("");setManualOpen(true);}} color="var(--accent)" variant="outline">✏️ Manual</Btn>
+      <PH title="Patroli Gedung" sub="Ketuk lingkaran gedung + foto bukti wajib sebagai validasi" action={null}/>
+      <div style={{background:"rgba(0,120,212,.07)",border:"1px solid rgba(0,120,212,.25)",borderRadius:10,padding:"8px 13px",marginBottom:12,display:"flex",alignItems:"center",gap:8,fontSize:11.5,color:"var(--accent)"}}>
+        <span>🏃</span>
+        <span>Semua anggota piket dapat mencatat patroli di seluruh gedung</span>
+      </div>
+
+      {/* ── Progress Bar ── */}
+      <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
+          <span style={{fontSize:11,fontWeight:700,color:"var(--tx3)",textTransform:"uppercase",letterSpacing:.5}}>Progress Patroli Hari Ini</span>
+          <span style={{fontSize:12,fontWeight:800,color:progressPct===100?"var(--ok)":"var(--accent)"}}>{doneAreas.length}/{ALL_AREAS.length} <span style={{fontWeight:500,color:"var(--tx3)"}}>gedung</span> · <span style={{color:progressPct===100?"var(--ok)":"var(--accent)"}}>{progressPct}%</span></span>
         </div>
-      )}/>
-      {!canEdit&&<ReadOnlyBanner reguHari={getReguHari(new Date())}/>}
+        <div style={{height:7,background:"var(--card2)",borderRadius:99,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${progressPct}%`,background:progressPct===100?"var(--ok)":"linear-gradient(90deg,var(--accent),var(--accent-light))",borderRadius:99,transition:"width .5s cubic-bezier(.22,1,.36,1)"}}/>
+        </div>
+      </div>
+
       <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,marginBottom:14,overflow:"hidden"}}>
-        <div style={{padding:12}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10}}>
-            {ALL_AREAS.map(area=>{
-              const pos=getPos(area);
+        <div style={{padding:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+            {Object.entries(PATROL_AREAS).flatMap(([pos,areas])=>
+              areas.map(area=>({area,pos}))
+            ).map(({area,pos})=>{
               const cnt=patrols.filter(p=>p.areas?.includes(area)).length;
               const last=patrols.filter(p=>p.areas?.includes(area)).at(-1);
+              const done = cnt > 0;
+              const recentlyScanned = last && (Date.now()-last.ts)<3600000;
               return (
-                <div key={area} style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:10,padding:10,textAlign:"center"}}>
-                  {isAdmin&&<div style={{display:"flex",justifyContent:"center",marginBottom:6}}><QRSvg value={encQR(area)} size={76}/></div>}
-                  <div style={{fontSize:10.5,fontWeight:800,color:"var(--tx2)",marginBottom:2}}>{area}</div>
-                  {pos&&<div style={{fontSize:9,color:POS_COL[pos]||"var(--tx4)",fontWeight:700,marginBottom:2}}>{pos}</div>}
-                  <div style={{fontSize:10,color:"var(--tx3)"}}>{cnt}× scan</div>
-                  {last&&<div style={{fontSize:10,color:"var(--ok)",fontWeight:700}}>{fmtT(last.ts)}</div>}
-                  {last?.photo&&<div style={{marginTop:4,fontSize:10,color:"#a78bfa",fontWeight:700}}>📷 Ada foto</div>}
-                  {isAdmin&&<div style={{marginTop:6,display:"flex",gap:4,justifyContent:"center"}}>
-                    <Btn onClick={()=>setViewQR(area)} color="var(--tx4)" variant="outline" size="sm"><IC n="print" s={11}/></Btn>
-                  </div>}
+                <div key={area} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+                  <button
+                    onClick={()=>onScan(area)}
+                    className="patrol-circle"
+                    style={{
+                      width:"100%",aspectRatio:"1",borderRadius:"50%",
+                      background: done ? "rgba(74,222,128,.10)" : "var(--card2)",
+                      border: done ? `2.5px solid var(--ok)` : `2px solid var(--border2)`,
+                      cursor:"pointer",
+                      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                      gap:2,padding:6,
+                      boxShadow: done
+                        ? "0 0 14px rgba(74,222,128,.35), 0 2px 6px rgba(0,0,0,.15)"
+                        : "0 2px 6px rgba(0,0,0,.12)",
+                      transition:"all .2s cubic-bezier(.22,1,.36,1)",
+                    }}>
+                    <span style={{fontSize:9,fontWeight:900,color:done?"var(--ok)":"var(--tx2)",textAlign:"center",lineHeight:1.25,wordBreak:"break-word",letterSpacing:-.1}}>{area}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:2}}>
+                      <span style={{fontSize:9,color:done?"var(--ok)":"var(--tx3)",fontWeight:700}}>{cnt}×</span>
+                      {done&&<svg width="9" height="9" viewBox="0 0 9 9" fill="none"><polyline points="1.5,4.5 3.5,6.5 7.5,2.5" stroke="var(--ok)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                    </div>
+                  </button>
+                  {last&&<div style={{fontSize:9,color:"var(--ok)",fontWeight:700,textAlign:"center"}}>{fmtT(last.ts)}</div>}
                 </div>
               );
             })}
@@ -1377,9 +1426,16 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
                 {p.photo?<span style={{fontSize:15}}>📷</span>:<IC n="qr" s={14} c="var(--accent-light)"/>}
               </div>
               <div style={{flex:1}}>
-                <div style={{fontSize:12.5,fontWeight:700,color:"var(--tx2)"}}>{p.areas?.join(", ")}{p.isManual&&<span style={{marginLeft:5,fontSize:9,background:"rgba(255,204,0,.15)",color:"#ffcc00",borderRadius:4,padding:"1px 5px",fontWeight:700}}>MANUAL</span>}</div>
+                <div style={{fontSize:12.5,fontWeight:700,color:"var(--tx2)"}}>{p.areas?.join(", ")}</div>
                 <div style={{fontSize:10.5,color:"var(--tx3)"}}>{p.pos} · {p.officer}</div>
-                {p.notes&&<div style={{fontSize:10.5,color:"var(--tx)",marginTop:1}}>📝 {p.notes}</div>}
+                {p.checklist&&Object.keys(p.checklist).filter(k=>p.checklist[k]!=="—").length>0&&(
+                  <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:4}}>
+                    {CHECKLIST_ITEMS.filter(i=>p.checklist?.[i.id]&&p.checklist[i.id]!=="—").map(i=>(
+                      <span key={i.id} style={{fontSize:9,fontWeight:700,color:CHECKLIST_COL[p.checklist[i.id]],background:CHECKLIST_COL[p.checklist[i.id]]+"18",borderRadius:4,padding:"1px 5px"}}>{i.emoji} {i.label}: {p.checklist[i.id]}</span>
+                    ))}
+                  </div>
+                )}
+                {p.notes&&<div style={{fontSize:10.5,color:"var(--tx)",marginTop:2}}>📝 {p.notes}</div>}
               </div>
               <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
                 <span style={{fontSize:10.5,fontWeight:700,color:"var(--accent)"}}>{fmtT(p.ts)}</span>
@@ -1390,65 +1446,99 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
         ))}
       </div>
 
-      <Modal open={scanOpen} onClose={()=>setScanOpen(false)} title="Scan QR Patroli" noPad><CamScanner onScan={onScan} onClose={()=>setScanOpen(false)}/></Modal>
+      {/* CamScanner dihapus — diganti tap lingkaran gedung */}
 
-      <Modal open={manualOpen} onClose={()=>setManualOpen(false)} title="Catat Patroli Manual">
-        <div style={{marginBottom:10,background:"rgba(255,204,0,.08)",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",fontSize:11.5,color:"#ffcc00"}}>⚠️ Gunakan jika kamera bermasalah atau gelap. Foto bukti tetap wajib.</div>
-        <div style={{marginBottom:14,marginTop:12}}>
-          <label style={{display:"block",fontSize:11,fontWeight:700,color:"var(--tx3)",marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Pilih Area</label>
-          <select value={manualArea} onChange={e=>setManualArea(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"1.5px solid var(--border2)",fontSize:13,fontFamily:"inherit",background:"var(--card2)",color:"var(--tx)"}}>
-            <option value="">-- Pilih area patroli --</option>
-            {Object.entries(PATROL_AREAS).map(([pos,areas])=>(
-              <optgroup key={pos} label={pos}>
-                {areas.map(a=><option key={a} value={a}>{a}</option>)}
-              </optgroup>
-            ))}
-          </select>
-        </div>
-        <div style={{display:"flex",gap:8}}><Btn onClick={onManual} color="var(--accent)" size="lg" full>Lanjut →</Btn><Btn onClick={()=>setManualOpen(false)} color="var(--tx4)" variant="outline">Batal</Btn></div>
-      </Modal>
+      {/* Modal Manual dihapus — diganti tap lingkaran gedung */}
 
-      <Modal open={!!confirm} onClose={()=>setConfirm(null)} title={confirm?.isManual?"Catat Patroli Manual":"Konfirmasi Patroli"}>
+      <Modal open={!!confirm} onClose={()=>setConfirm(null)} title="Checklist Patroli" bottom>
         {confirm&&(
           <div>
-            <div style={{background:"var(--green-card)",borderRadius:10,padding:"12px",marginBottom:14,textAlign:"center"}}>
-              <div style={{fontSize:12,color:"var(--tx3)"}}>{confirm.isManual?"Area Dipilih Manual":"Titik Patroli"}</div>
-              <div style={{fontSize:20,fontWeight:900,color:"var(--ok)"}}>{confirm.area}</div>
-              {confirm.isManual&&<div style={{fontSize:10,color:"#ffcc00",marginTop:4}}>⚠️ Mode manual — foto bukti wajib</div>}
+            {/* Header gedung — circle + nama */}
+            <div style={{display:"flex",alignItems:"center",gap:14,background:"var(--card2)",border:"1px solid var(--border2)",borderRadius:14,padding:"14px 16px",marginBottom:18}}>
+              <div style={{
+                width:64,height:64,borderRadius:"50%",flexShrink:0,
+                background:`${POS_COL[confirm.pos]||"var(--accent)"}18`,
+                border:`2.5px solid ${POS_COL[confirm.pos]||"var(--accent)"}`,
+                display:"flex",alignItems:"center",justifyContent:"center",
+              }}>
+                <span style={{fontSize:10,fontWeight:900,color:POS_COL[confirm.pos]||"var(--accent)",textAlign:"center",lineHeight:1.3,padding:4}}>{confirm.area}</span>
+              </div>
+              <div>
+                <div style={{fontSize:18,fontWeight:900,color:"var(--tx)"}}>{confirm.area}</div>
+                <div style={{fontSize:12,color:"var(--tx3)",marginTop:2}}>{confirm.pos}</div>
+              </div>
             </div>
-            {/* Nama petugas: otomatis dari login, admin bisa pilih */}
+
+            {/* Checklist kondisi */}
+            <div style={{fontSize:11,fontWeight:800,color:"var(--tx3)",letterSpacing:.7,textTransform:"uppercase",marginBottom:10}}>Cek Kondisi</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+              {getChecklistItems(confirm.area).map(item=>{
+                const cur=checklist[item.id]||"—";
+                const idx=CHECKLIST_STATUS.indexOf(cur);
+                const next=CHECKLIST_STATUS[(idx+1)%CHECKLIST_STATUS.length];
+                const col=CHECKLIST_COL[cur];
+                return (
+                  <button key={item.id}
+                    onClick={()=>setChecklist(c=>({...c,[item.id]:next}))}
+                    style={{
+                      display:"flex",alignItems:"center",gap:12,
+                      background:"var(--card2)",border:`1.5px solid ${cur==="—"?"var(--border)":col+"55"}`,
+                      borderRadius:12,padding:"13px 16px",cursor:"pointer",
+                      fontFamily:"inherit",textAlign:"left",transition:"all .15s",
+                      boxShadow:cur!=="—"?`0 0 0 1px ${col}22`:"none",
+                    }}>
+                    {/* Checkbox visual */}
+                    <div style={{
+                      width:22,height:22,borderRadius:6,border:`2px solid ${cur==="—"?"var(--border2)":col}`,
+                      background:cur==="—"?"transparent":`${col}22`,
+                      display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+                      transition:"all .15s",
+                    }}>
+                      {cur!=="—"&&<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke={col} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                    </div>
+                    <span style={{fontSize:15}}>{item.emoji}</span>
+                    <span style={{flex:1,fontSize:14,fontWeight:600,color:"var(--tx)"}}>{item.label}</span>
+                    <span style={{fontSize:12,fontWeight:700,color:col,minWidth:44,textAlign:"right"}}>{cur}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Petugas */}
             {isAdmin ? (
               <Inp label="Petugas" value={officer} onChange={e=>setOfficer(e.target.value)} as="select">
                 <option value="">— Pilih Anggota —</option>
                 {Object.values(REGU).flat().map(m=><option key={m} value={m}>{m}</option>)}
               </Inp>
             ) : (
-              <div style={{marginBottom:11}}>
-                <label style={{display:"block",fontSize:11,color:"var(--accent)",marginBottom:4,fontWeight:700,letterSpacing:.5,textTransform:"uppercase"}}>Petugas</label>
-                <div style={{background:"var(--card2)",border:"1.5px solid var(--border2)",borderRadius:9,padding:"9px 12px",fontSize:13.5,color:"var(--tx)",display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:14}}>👤</span>
-                  <span style={{fontWeight:700}}>{officer||currentUser?.name||"—"}</span>
-                  <span style={{marginLeft:"auto",fontSize:10,color:"var(--tx3)",background:"var(--card3)",borderRadius:5,padding:"2px 7px"}}>Login aktif</span>
-                </div>
+              <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--card2)",border:"1.5px solid var(--border2)",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+                <span style={{fontSize:18}}>👤</span>
+                <span style={{flex:1,fontSize:14,fontWeight:700,color:"var(--tx)"}}>{officer||currentUser?.name||"—"}</span>
+                <span style={{fontSize:10,color:"var(--tx3)"}}>Login aktif</span>
               </div>
             )}
-            <Inp label="Catatan Kondisi" value={notes} onChange={e=>setNotes(e.target.value)} as="textarea" placeholder="Kondisi titik patroli..."/>
-            <div style={{marginBottom:14}}>
-              <label style={{display:"block",fontSize:11,color:photo?"var(--ok)":"#dc2626",marginBottom:6,fontWeight:700,letterSpacing:.5,textTransform:"uppercase"}}>📷 Foto Bukti — WAJIB</label>
+
+            {/* Catatan */}
+            <Inp label="Catatan (Opsional)" value={notes} onChange={e=>setNotes(e.target.value)} as="textarea" placeholder="Kondisi khusus, temuan, dll..."/>
+
+            {/* Foto bukti */}
+            <div style={{marginBottom:16}}>
+              <label style={{display:"block",fontSize:11,color:photo?"var(--ok)":"#dc2626",marginBottom:7,fontWeight:800,letterSpacing:.5,textTransform:"uppercase"}}>📸 Foto Bukti — WAJIB</label>
               {!photo?(
-                <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"rgba(220,38,38,.07)",border:"2px dashed #fca5a5",borderRadius:10,padding:"16px 12px",cursor:"pointer",color:"#dc2626",fontWeight:700,fontSize:13}}>
-                  <IC n="cam" s={20} c="#dc2626"/>
+                <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"rgba(220,38,38,.06)",border:"2px dashed #fca5a5",borderRadius:12,padding:"18px 12px",cursor:"pointer",color:"#dc2626",fontWeight:700,fontSize:14}}>
+                  <IC n="cam" s={22} c="#dc2626"/>
                   Ambil Foto Sekarang
                   <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handlePhoto} style={{display:"none"}}/>
                 </label>
               ):(
-                <div style={{position:"relative",display:"inline-block",width:"100%"}}>
-                  <img src={photo} alt="bukti patroli" style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:10,border:"2px solid #86efac",display:"block"}}/>
-                  <button onClick={removePhoto} style={{position:"absolute",top:6,right:6,background:"rgba(220,38,38,.85)",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:800,padding:"4px 9px",cursor:"pointer",fontFamily:"inherit"}}>✕ Ganti</button>
-                  <div style={{position:"absolute",bottom:6,left:6,background:"rgba(5,150,105,.85)",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#fff",fontWeight:700}}>✓ Foto siap</div>
+                <div style={{position:"relative",width:"100%"}}>
+                  <img src={photo} alt="bukti patroli" style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:12,border:"2px solid #86efac",display:"block"}}/>
+                  <button onClick={removePhoto} style={{position:"absolute",top:8,right:8,background:"rgba(220,38,38,.85)",border:"none",borderRadius:7,color:"#fff",fontSize:11,fontWeight:800,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>✕ Ganti</button>
+                  <div style={{position:"absolute",bottom:8,left:8,background:"rgba(5,150,105,.88)",borderRadius:7,padding:"3px 10px",fontSize:10,color:"#fff",fontWeight:700}}>✓ Foto siap</div>
                 </div>
               )}
             </div>
+
             <div style={{display:"flex",gap:8}}>
               <Btn onClick={doP} color={photo?"var(--ok)":"var(--tx4)"} size="lg" full><IC n="ok" s={14}/> Catat Patroli</Btn>
               <Btn onClick={()=>setConfirm(null)} color="var(--tx4)" variant="outline">Batal</Btn>
@@ -1456,20 +1546,7 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
           </div>
         )}
       </Modal>
-      <Modal open={!!viewQR} onClose={()=>setViewQR(null)} title={`Cetak QR: ${viewQR}`}>
-        {viewQR&&(
-          <div style={{textAlign:"center"}}>
-            <div style={{background:"var(--card-solid)",border:"2px solid var(--qr-border)",borderRadius:14,padding:18,display:"inline-block",marginBottom:10}}>
-              <QRSvg value={encQR(viewQR)} size={190}/>
-              <div style={{marginTop:8,fontSize:13,fontWeight:800,color:"var(--tx2)"}}>{viewQR}</div>
-              <div style={{fontSize:10,color:"var(--tx3)"}}>BBPKA II Jatinangor</div>
-            </div>
-            <div style={{color:"var(--tx3)",fontSize:12,marginBottom:12}}>Screenshot & cetak, tempel di {viewQR}</div>
-            <Btn onClick={()=>setViewQR(null)} color="var(--accent)">Tutup</Btn>
-          </div>
-        )}
-      </Modal>
-      <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Bukti Patroli">
+      <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Bukti Patroli" bottom>
         {viewPhoto&&(
           <div style={{textAlign:"center"}}>
             <img src={viewPhoto} alt="bukti patroli" style={{width:"100%",maxHeight:400,objectFit:"contain",borderRadius:10,marginBottom:14}}/>
@@ -1547,14 +1624,14 @@ function IncTab({incidents,setIncidents,posAssign,toast,canEdit}) {
           {canEdit&&inc.status!=="Selesai"&&<div style={{display:"flex",gap:7,marginTop:6}}><Btn onClick={()=>upd(inc.id,"Dalam Penanganan")} color="#ffcc00" size="sm" variant="outline">Penanganan</Btn><Btn onClick={()=>upd(inc.id,"Selesai")} color="var(--ok)" size="sm">✓ Selesai</Btn></div>}
         </div>
       ))}
-      <Modal open={open} onClose={()=>{setOpen(false);setPhoto(null);}} title="Laporkan Insiden">
+      <Modal open={open} onClose={()=>{setOpen(false);setPhoto(null);}} title="Laporkan Insiden" bottom>
         <Inp label="Judul" value={fm.title} onChange={e=>f("title",e.target.value)} placeholder="Judul insiden"/>
         <Inp label="Deskripsi" value={fm.desc} onChange={e=>f("desc",e.target.value)} as="textarea" placeholder="Detail kejadian..."/>
         <div style={{display:"flex",gap:10}}><Inp label="Kategori" value={fm.category} onChange={e=>f("category",e.target.value)} as="select" half>{INC_CAT.map(c=><option key={c}>{c}</option>)}</Inp><Inp label="Pos" value={fm.pos} onChange={e=>f("pos",e.target.value)} as="select" half>{POS_LIST.map(p=><option key={p}>{p}</option>)}</Inp></div>
         <PhotoPicker photo={photo} setPhoto={setPhoto} label="📷 Foto Bukti Insiden" color="#dc2626"/>
         <div style={{display:"flex",gap:8}}><Btn onClick={submit} color="#dc2626" size="lg">Simpan</Btn><Btn onClick={()=>{setOpen(false);setPhoto(null);}} color="var(--tx4)" variant="outline" size="lg">Batal</Btn></div>
       </Modal>
-      <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Bukti Insiden">
+      <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Bukti Insiden" bottom>
         {viewPhoto&&<div style={{textAlign:"center"}}><img src={viewPhoto} alt="bukti" style={{width:"100%",maxHeight:400,objectFit:"contain",borderRadius:10,marginBottom:14}}/><Btn onClick={()=>setViewPhoto(null)} color="var(--accent)">Tutup</Btn></div>}
       </Modal>
     </div>
@@ -1589,7 +1666,7 @@ function PkgTab({packages,setPackages,toast,canEdit}) {
       {pend.length>0&&<><div style={{fontSize:12,fontWeight:800,color:"#ffcc00",marginBottom:7}}>⚠ Menunggu Pengambilan</div>{pend.map(p=><PC key={p.id} p={p} upd={upd} canEdit={canEdit} onViewPhoto={setViewPhoto}/>)}<div style={{borderTop:"1px solid var(--border2)",margin:"12px 0"}}/></>}
       {done.length>0&&<><div style={{fontSize:12,fontWeight:700,color:"var(--tx3)",marginBottom:7}}>Riwayat</div>{[...done].reverse().map(p=><PC key={p.id} p={p} upd={upd} canEdit={canEdit} onViewPhoto={setViewPhoto}/>)}</>}
       {packages.length===0&&<div style={{color:"var(--tx3)",fontSize:13}}>Belum ada paket.</div>}
-      <Modal open={open} onClose={()=>{setOpen(false);setPhoto(null);}} title="Catat Paket / Kurir">
+      <Modal open={open} onClose={()=>{setOpen(false);setPhoto(null);}} title="Catat Paket / Kurir" bottom>
         <Inp label="Penerima" value={fm.recipient} onChange={e=>f("recipient",e.target.value)} placeholder="Nama karyawan"/>
         <Inp label="Pengirim" value={fm.sender} onChange={e=>f("sender",e.target.value)} placeholder="Nama pengirim"/>
         <Inp label="Jenis" value={fm.type} onChange={e=>f("type",e.target.value)} as="select">{types.map(t=><option key={t}>{t}</option>)}</Inp>
@@ -1597,7 +1674,7 @@ function PkgTab({packages,setPackages,toast,canEdit}) {
         <PhotoPicker photo={photo} setPhoto={setPhoto} label="📷 Foto Paket" color="#ffcc00"/>
         <div style={{display:"flex",gap:8}}><Btn onClick={submit} color="var(--accent)" size="lg">Simpan</Btn><Btn onClick={()=>{setOpen(false);setPhoto(null);}} color="var(--tx4)" variant="outline" size="lg">Batal</Btn></div>
       </Modal>
-      <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Paket">
+      <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Paket" bottom>
         {viewPhoto&&<div style={{textAlign:"center"}}><img src={viewPhoto} alt="paket" style={{width:"100%",maxHeight:400,objectFit:"contain",borderRadius:10,marginBottom:14}}/><Btn onClick={()=>setViewPhoto(null)} color="var(--accent)">Tutup</Btn></div>}
       </Modal>
     </div>
@@ -1640,7 +1717,7 @@ function GuestTab({guests,setGuests,toast,canEdit}) {
       {staying.length>0&&<><div style={{fontSize:12,fontWeight:800,color:"#a78bfa",marginBottom:7}}>🏠 Masih Ada ({staying.length})</div>{staying.map(g=><GC key={g.id} g={g} co={co} canEdit={canEdit} onViewPhoto={setViewPhoto}/>)}<div style={{borderTop:"1px solid var(--border2)",margin:"12px 0"}}/></>}
       {gone.length>0&&<><div style={{fontSize:12,fontWeight:700,color:"var(--tx3)",marginBottom:7}}>Riwayat</div>{[...gone].reverse().map(g=><GC key={g.id} g={g} co={co} canEdit={canEdit} onViewPhoto={setViewPhoto}/>)}</>}
       {guests.length===0&&<div style={{color:"var(--tx3)",fontSize:13}}>Belum ada tamu.</div>}
-      <Modal open={open} onClose={()=>{setOpen(false);setPhoto(null);}} title="Catat Tamu / Peserta">
+      <Modal open={open} onClose={()=>{setOpen(false);setPhoto(null);}} title="Catat Tamu / Peserta" bottom>
         <Inp label="Nama" value={fm.name} onChange={e=>f("name",e.target.value)} placeholder="Nama lengkap"/>
         <Inp label="Instansi / Asal" value={fm.institution} onChange={e=>f("institution",e.target.value)} placeholder="Instansi"/>
         <Inp label="Jenis" value={fm.type} onChange={e=>f("type",e.target.value)} as="select">{["Tamu Harian","Menginap (Guest House)","Peserta Pelatihan","Tamu VIP"].map(t=><option key={t}>{t}</option>)}</Inp>
@@ -1650,7 +1727,7 @@ function GuestTab({guests,setGuests,toast,canEdit}) {
         <PhotoPicker photo={photo} setPhoto={setPhoto} label="📷 Foto Tamu / KTP" color="#a78bfa"/>
         <div style={{display:"flex",gap:8}}><Btn onClick={submit} color="#a78bfa" size="lg">Simpan</Btn><Btn onClick={()=>{setOpen(false);setPhoto(null);}} color="var(--tx4)" variant="outline" size="lg">Batal</Btn></div>
       </Modal>
-      <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Tamu">
+      <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Tamu" bottom>
         {viewPhoto&&<div style={{textAlign:"center"}}><img src={viewPhoto} alt="tamu" style={{width:"100%",maxHeight:400,objectFit:"contain",borderRadius:10,marginBottom:14}}/><Btn onClick={()=>setViewPhoto(null)} color="var(--accent)">Tutup</Btn></div>}
       </Modal>
     </div>
@@ -2058,14 +2135,14 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
           )}
         </div>
       ))}
-      <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Mutasi">
+      <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Mutasi" bottom>
         {viewPhoto&&<div style={{textAlign:"center"}}><img src={viewPhoto} alt="mutasi" style={{width:"100%",maxHeight:400,objectFit:"contain",borderRadius:10,marginBottom:14}}/><Btn onClick={()=>setViewPhoto(null)} color="var(--accent)">Tutup</Btn></div>}
       </Modal>
       <Modal open={!!printMut} onClose={()=>setPrintMut(null)} title="Laporan Mutasi" wide noPad>
         {printMut&&<MutPrint m={printMut} onClose={()=>setPrintMut(null)} inventarisDaftar={inventarisDaftar} inventarisCek={inventarisCek}/>}
       </Modal>
       {/* Modal Konfirmasi Serah Terima */}
-      <Modal open={!!cekOpen} onClose={()=>setCekOpen(null)} title="Konfirmasi Serah Terima">
+      <Modal open={!!cekOpen} onClose={()=>setCekOpen(null)} title="Konfirmasi Serah Terima" bottom>
         {cekOpen&&<div>
           <div style={{background:"var(--card-solid)",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
             <div style={{fontSize:12,fontWeight:700,color:"var(--tx2)",marginBottom:6}}>📋 Laporan dari Regu {cekOpen.fromRegu}</div>
@@ -2090,7 +2167,7 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
           </div>
         </div>}
       </Modal>
-      <Modal open={open} onClose={()=>{setOpen(false);setPhoto(null);}} title="Buat Laporan Mutasi">
+      <Modal open={open} onClose={()=>{setOpen(false);setPhoto(null);}} title="Buat Laporan Mutasi" bottom>
         {/* Info regu otomatis */}
         <div style={{background:"var(--green-card)",border:"1.5px solid #86efac",borderRadius:10,padding:"10px 14px",marginBottom:10,display:"flex",gap:10,alignItems:"center"}}>
           <span style={{fontSize:20}}>🔄</span>
@@ -2467,7 +2544,7 @@ function LiburBanner({jenis, liburHariIni, todayKey, liburData, setLiburData, is
       </div>
 
       {/* Modal setting jatah libur */}
-      <Modal open={open} onClose={()=>setOpen(false)} title={"🌴 Jatah Libur — " + new Date(todayKey).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long"})}>
+      <Modal open={open} onClose={()=>setOpen(false)} title={"🌴 Jatah Libur — " + new Date(todayKey).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long"})} bottom>
         <div style={{fontSize:12,color:"var(--tx3)",marginBottom:14}}>
           {isAdmin?"Pilih anggota yang mendapat jatah libur hari ini. Tap untuk toggle.":"Daftar anggota yang mendapat jatah libur hari ini."}
         </div>
@@ -3289,7 +3366,7 @@ function InstruksiTab({instruksi, setInstruksi, toast, isAdmin, currentUser}) {
       )}
 
       {/* Modal buat / edit instruksi */}
-      <Modal open={open} onClose={()=>setOpen(false)} title={editItem?"Edit Instruksi":"Buat Instruksi Pimpinan"}>
+      <Modal open={open} onClose={()=>setOpen(false)} title={editItem?"Edit Instruksi":"Buat Instruksi Pimpinan"} bottom>
         {!editItem&&<div style={{background:"rgba(255,50,50,.1)",border:"1px solid #fca5a5",borderRadius:9,padding:"9px 13px",marginBottom:14,fontSize:11.5,color:"var(--r)"}}>
           ⚠️ Instruksi akan langsung terlihat oleh semua anggota yang login
         </div>}
@@ -3980,7 +4057,7 @@ function KeluarTab({ keluarData, setKeluarData, toast, canEdit, isAdmin, now }) 
       )}
 
       {/* Modal catat keluar */}
-      <Modal open={open} onClose={() => setOpen(false)} title="Catat Peserta Keluar">
+      <Modal open={open} onClose={() => setOpen(false)} title="Catat Peserta Keluar" bottom>
         <Inp label="Nama Peserta" value={fm.nama} onChange={e=>f("nama",e.target.value)} placeholder="Nama lengkap peserta"/>
         <Inp label="Tujuan" value={fm.tujuan} onChange={e=>f("tujuan",e.target.value)} as="select">
           {TUJUAN_LIST.map(t => <option key={t}>{t}</option>)}
@@ -4206,8 +4283,8 @@ function App() {
       )}
 
       {/* CONTENT */}
-      <main style={{ flex: 1, padding: "14px 14px 0", overflowY: "auto" }}>
-        <div key={tabKey} className="tab-view">
+      <main style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <div key={tabKey} className="tab-view" style={{ flex: 1, overflowY: "auto", padding: "14px 14px 0", WebkitOverflowScrolling: "touch" }}>
         {tab === "search" && <SearchTab packages={packages} guests={guests} mutations={mutations} incidents={incidents} patrols={patrols} />}
         {tab === "pimpinan" && <PimpinanTab now={now} patrols={patrols} incidents={incidents} posAssign={posAssign} instruksi={instruksi} mutations={mutations} currentUser={currentUser} />}
         {tab === "dashboard" && <DashTab now={now} shift={shift} reguHari={reguHari} posAssign={posAssign} incidents={incidents} packages={packages} guests={guests} patrols={patrols} standJaga={standJaga} mutations={mutations} posRollingLog={posRollingLog} liburData={liburData} setLiburData={setLiburData} instruksi={instruksi} currentUser={currentUser} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} />}
@@ -4233,10 +4310,10 @@ function App() {
         {ACTIVE_NAV.map(t => {
           const active = t.id === "more" ? moreOpen : tab === t.id;
           return (
-            <button key={t.id} onClick={() => { if (t.id === "more") { setMoreOpen(v => !v); } else { setTab(t.id); setMoreOpen(false); } }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: active ? "var(--pill-active)" : "none", border: "none", cursor: "pointer", color: active ? "var(--accent-light)" : "var(--tx4)", transition: "all .15s", fontFamily: "inherit", position: "relative", margin: "5px 3px", borderRadius: 9 }}>
+            <button key={t.id} onClick={() => { if (t.id === "more") { setMoreOpen(v => !v); } else { setTab(t.id); setMoreOpen(false); } }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: active ? "var(--pill-active)" : "none", border: "none", cursor: "pointer", color: active ? "var(--accent-light)" : "var(--tx2)", transition: "all .15s", fontFamily: "inherit", position: "relative", margin: "5px 3px", borderRadius: 9 }}>
               {t.id === "incident" && activeI > 0 && <div style={{ position: "absolute", top: 4, right: "calc(50% - 16px)", minWidth: 16, height: 16, background: "var(--r)", borderRadius: 8, fontSize: 9, color: "#fff", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>{activeI}</div>}
-              <IC n={t.icon} s={20} c={active ? "var(--accent-light)" : "var(--tx4)"} />
-              <span style={{ fontSize: 9.5, fontWeight: active ? 700 : 500 }}>{t.label}</span>
+              <IC n={t.icon} s={20} c={active ? "var(--accent-light)" : "var(--tx2)"} />
+              <span style={{ fontSize: 9.5, fontWeight: active ? 700 : 500, color: active ? "var(--accent-light)" : "var(--tx3)" }}>{t.label}</span>
               {active && t.id !== "more" && <div style={{ position: "absolute", top: 0, left: "30%", right: "30%", height: 2, background: "var(--accent-light)", borderRadius: "0 0 2px 2px" }} />}
             </button>
           );
