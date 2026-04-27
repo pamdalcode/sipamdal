@@ -532,10 +532,10 @@ const POS_CAP = { "Pos Utama": 2, "Pos Asrama": 1, "Pos Guest House": 1, "Gedung
 const POS_COL = { "Pos Utama": "#5b9bd5", "Pos Asrama": "#6aaa88", "Pos Guest House": "#8882b8", "Gedung Utama": "#7090a8" };
 
 const PATROL_AREAS = {
-  "Pos Asrama": ["Gedung Asrama 1","Gedung Asrama 2","Ruang Makan 2","Klinik","Gedung Kelas E","Gedung Kelas A","Ruang Makan 1","Gedung Genset"],
-  "Gedung Utama": ["Gedung Utama","Gedung WI","Aula","Gedung Sarpras","Gedung Kepegawaian","Gedung Arsip","Area Parkir"],
+  "Pos Asrama": ["Gedung Asrama 1","Gedung Asrama 2","Ruang Makan 2","Klinik","Gedung Kelas E","Gedung Kelas A","Ruang Makan 1"],
+  "Gedung Utama": ["Gedung Utama","Gedung WI","Aula","Gedung Sarpras","Gedung Kepegawaian","Area Parkir","Gedung Genset"],
   "Pos Utama": ["Area Pos Utama","Taman","Gedung Kantin","Masjid"],
-  "Pos Guest House": ["Guest House 1","Guest House 2","Guest House 3","Guest House 4","Guest House 5","Gedung GOR"],
+  "Pos Guest House": ["Guest House 1","Guest House 2","Guest House 3","Guest House 4","Guest House 5","Gedung GOR","Gedung Arsip"],
 };
 
 const QR_PREFIX = "BBPKA2-PAMDAL-";
@@ -661,34 +661,40 @@ function usePatrols() {
   }, []);
 
   const set = (newArr) => {
-    // Deteksi item baru (yang belum ada di state sebelumnya)
+    // Deteksi item baru dibanding state saat ini (pakai ref trick via closure)
     sv(prev => {
-      const prevIds = new Set(prev.map(p => p.id));
-      const toAdd = newArr.filter(p => !prevIds.has(p.id));
+      const prevIds = new Set(prev.map(p => String(p.id)));
+      const toAdd = newArr.filter(p => !prevIds.has(String(p.id)));
       const fb = window.__FB;
-      if (fb) {
-        const { db, collection, doc, setDoc } = fb;
-        toAdd.forEach(p => {
-          // Simpan foto ke localStorage saja
-          if (p.photo) {
-            try { localStorage.setItem(LS_PHOTO_PREFIX + p.id, p.photo); } catch{}
-          }
-          // Simpan metadata (tanpa foto) ke Firestore
-          const { photo: _ph, ...meta } = p;
-          setDoc(doc(collection(db, FS_COL), String(p.id)), meta).catch(err => {
-            console.error("Patrol save error:", err.code, err.message);
+      if (toAdd.length > 0) {
+        if (fb) {
+          const { db, collection, doc, setDoc } = fb;
+          toAdd.forEach(p => {
+            // Simpan foto ke localStorage saja
+            if (p.photo) {
+              try { localStorage.setItem(LS_PHOTO_PREFIX + p.id, p.photo); } catch{}
+            }
+            // Simpan metadata (tanpa foto) ke Firestore
+            const { photo: _ph, ...meta } = p;
+            setDoc(doc(collection(db, FS_COL), String(p.id)), { ...meta, id: p.id }).catch(err => {
+              console.error("Patrol save error:", err.code, err.message);
+            });
           });
-        });
-      } else {
-        // Offline: simpan foto ke localStorage
-        toAdd.forEach(p => {
-          if (p.photo) {
-            try { localStorage.setItem(LS_PHOTO_PREFIX + p.id, p.photo); } catch{}
-          }
-        });
+        } else {
+          // Offline: simpan foto ke localStorage saja
+          toAdd.forEach(p => {
+            if (p.photo) {
+              try { localStorage.setItem(LS_PHOTO_PREFIX + p.id, p.photo); } catch{}
+            }
+          });
+        }
       }
-      // Simpan metadata ke localStorage cache
-      try { localStorage.setItem(LS_KEY, JSON.stringify(newArr.map(p => ({...p, photo: undefined})))); } catch{}
+      // Simpan metadata (tanpa foto) ke localStorage cache
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(newArr.map(p => {
+          const { photo: _ph, ...rest } = p; return rest;
+        })));
+      } catch{}
       return newArr;
     });
   };
