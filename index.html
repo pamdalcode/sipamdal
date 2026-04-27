@@ -532,7 +532,7 @@ const POS_CAP = { "Pos Utama": 2, "Pos Asrama": 1, "Pos Guest House": 1, "Gedung
 const POS_COL = { "Pos Utama": "#5b9bd5", "Pos Asrama": "#6aaa88", "Pos Guest House": "#8882b8", "Gedung Utama": "#7090a8" };
 
 const PATROL_AREAS = {
-  "Pos Asrama": ["Gedung Asrama 2","Ruang Makan 2","Klinik","Gedung Kelas E","Gedung Kelas A","Ruang Makan 1","Gedung Genset"],
+  "Pos Asrama": ["Gedung Asrama 1","Gedung Asrama 2","Ruang Makan 2","Klinik","Gedung Kelas E","Gedung Kelas A","Ruang Makan 1","Gedung Genset"],
   "Gedung Utama": ["Gedung Utama","Gedung WI","Aula","Gedung Sarpras","Gedung Kepegawaian","Gedung Arsip","Area Parkir"],
   "Pos Utama": ["Area Pos Utama","Taman","Gedung Kantin","Masjid"],
   "Pos Guest House": ["Guest House 1","Guest House 2","Guest House 3","Guest House 4","Guest House 5","Gedung GOR"],
@@ -1235,35 +1235,6 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
       </div>
       {/* Aksi Cepat — digantikan oleh FAB */}
 
-      {/* Status Patroli per Pos */}
-      <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-          <div style={{fontSize:9,letterSpacing:3,color:"var(--accent)"}}>▶ STATUS PATROLI HARI INI</div>
-          <button onClick={()=>setTab("patrol")} style={{fontSize:9,color:"var(--accent)",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",letterSpacing:1}}>LIHAT SEMUA →</button>
-        </div>
-        {POS_LIST.map(p=>{
-          const posPatrols = patrols.filter(pt=>pt.pos===p && new Date(pt.ts).toDateString()===now.toDateString());
-          const last = posPatrols.sort((a,b)=>b.ts-a.ts)[0];
-          const minsAgo = last ? Math.floor((now - last.ts)/60000) : null;
-          const overdue = !last || minsAgo > 60;
-          return (
-            <div key={p} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
-              <div>
-                <div style={{fontSize:11,fontWeight:700,color:"var(--tx)"}}>{p}</div>
-                <div style={{fontSize:9,color:"var(--tx2)"}}>{posAssign[p]?.join(", ")||"—"}</div>
-              </div>
-              <div style={{textAlign:"right"}}>
-                {last
-                  ? <span style={{fontSize:10,fontWeight:700,color:overdue?"#ffcc00":"var(--accent-light)"}}>{minsAgo < 60 ? `${minsAgo} mnt lalu` : `${Math.floor(minsAgo/60)}j ${minsAgo%60}m lalu`}</span>
-                  : <span style={{fontSize:10,fontWeight:700,color:"#e53e3e"}}><span className="icon-glow-red">⚠</span> Belum patroli</span>
-                }
-                <div style={{fontSize:9,color:"var(--tx3)"}}>{last?`${posPatrols.length}x hari ini`:""}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
       {/* Widget Instruksi di Dashboard */}
       {(()=>{
         const PRI_COL2 = {Penting:"#dc2626", Normal:"var(--accent)", Info:"var(--ok)"};
@@ -1771,25 +1742,29 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
 
   const toggleCheck = (item) => setChecks(p=>({...p,[item]:!p[item]}));
 
-  const doPatrol = () => {
+  const doPatrol = async () => {
     const checkedCount = Object.values(checks).filter(Boolean).length;
     if(checkedCount===0){ toast("Centang minimal 1 item!",false); return; }
     if(!photo){ toast("📷 Foto bukti wajib!",false); return; }
+    // Pastikan photo sudah ter-resolve (bukan Promise)
+    const resolvedPhoto = (photo instanceof Promise) ? await photo : photo;
+    if(!resolvedPhoto){ toast("📷 Foto gagal diproses, coba lagi!",false); return; }
+    const snap = confirm;
     setPatrols([...patrols,{
       id:Date.now(), ts:Date.now(),
-      pos:confirm.pos, officer:officer||"—",
-      areas:[confirm.area], notes,
+      pos:snap.pos, officer:officer||"—",
+      areas:[snap.area], notes,
       checks:Object.entries(checks).filter(([,v])=>v).map(([k])=>k),
-      photo,
+      photo: resolvedPhoto,
     }]);
     setConfirm(null);
-    toast(`✓ Patroli ${confirm.area} dicatat!`);
+    toast(`✓ Patroli ${snap.area} dicatat!`);
   };
 
   const handlePhoto=(e)=>{
     const file=e.target.files[0]; if(!file) return;
     const r=new FileReader();
-    r.onload=()=>kompressFoto(r.result).then(setPhoto);
+    r.onload=()=>kompressFoto(r.result).then(resolved => setPhoto(resolved));
     r.readAsDataURL(file);
   };
 
