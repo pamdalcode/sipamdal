@@ -435,17 +435,6 @@
     }
   }
 
-  // Flush antrian saat kembali online
-  window.addEventListener("online", async () => {
-    try {
-      const q = JSON.parse(localStorage.getItem("audit_queue")||"[]");
-      if (!q.length) return;
-      for (const entry of q)
-        await addDoc(collection(db, "sipamdal_audit"), {...entry, ts:serverTimestamp(), flushed:true});
-      localStorage.removeItem("audit_queue");
-    } catch {}
-  });
-
   // ── Expose ke Babel script ────────────────────────────────────────────────────
   window.__FB = { db, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, getDocs, addDoc, serverTimestamp, query, orderBy, limit, writeAuditLog };
 
@@ -453,17 +442,62 @@
   // Gunakan onSnapshot ke doc kecil sebagai probe koneksi
   const probe = doc(db, "sipamdal", "pad_pos");
   let unsubProbe = null;
+  let wasOffline = false; // lacak apakah sebelumnya offline
+
   function startProbe() {
     if (unsubProbe) return;
     unsubProbe = onSnapshot(probe,
-      () => { window.__FB_ONLINE = true;  window.dispatchEvent(new Event("fb_online")); },
-      () => { window.__FB_ONLINE = false; window.dispatchEvent(new Event("fb_offline")); }
+      async () => {
+        // Firebase berhasil terhubung
+        const nowOnline = !window.__FB_ONLINE; // baru saja kembali online
+        window.__FB_ONLINE = true;
+        window.dispatchEvent(new Event("fb_online"));
+
+        // Jika sebelumnya offline, catat kembali online + flush antrian
+        if (wasOffline) {
+          wasOffline = false;
+          const tsOnline = new Date().toISOString();
+          try {
+            // Catat event KEMBALI_ONLINE ke Firestore
+            await addDoc(collection(db, "sipamdal_audit"), {
+              action: "KEMBALI_ONLINE",
+              info: "Koneksi Firebase pulih",
+              tsLocal: tsOnline,
+              ts: serverTimestamp()
+            });
+          } catch {}
+          // Flush antrian yang tersimpan saat offline
+          try {
+            const q = JSON.parse(localStorage.getItem("audit_queue") || "[]");
+            if (q.length) {
+              for (const entry of q) {
+                await addDoc(collection(db, "sipamdal_audit"), { ...entry, ts: serverTimestamp(), flushed: true });
+              }
+              localStorage.removeItem("audit_queue");
+            }
+          } catch {}
+        }
+      },
+      () => {
+        // Firebase terputus
+        window.__FB_ONLINE = false;
+        wasOffline = true;
+        window.dispatchEvent(new Event("fb_offline"));
+        // Catat event OFFLINE ke antrian lokal
+        try {
+          const q = JSON.parse(localStorage.getItem("audit_queue") || "[]");
+          q.push({ action: "KONEKSI_OFFLINE", info: "Koneksi Firebase terputus", tsLocal: new Date().toISOString() });
+          localStorage.setItem("audit_queue", JSON.stringify(q.slice(-50)));
+        } catch {}
+      }
     );
   }
+
   // Mulai probe setelah auth selesai
   signInAnonymously(auth).then(startProbe).catch(startProbe);
   window.addEventListener("offline", () => {
     window.__FB_ONLINE = false;
+    wasOffline = true;
     window.dispatchEvent(new Event("fb_offline"));
   });
 </script>
@@ -498,10 +532,10 @@ const POS_CAP = { "Pos Utama": 2, "Pos Asrama": 1, "Pos Guest House": 1, "Gedung
 const POS_COL = { "Pos Utama": "#5b9bd5", "Pos Asrama": "#6aaa88", "Pos Guest House": "#8882b8", "Gedung Utama": "#7090a8" };
 
 const PATROL_AREAS = {
-  "Pos Asrama": ["Gedung Asrama 2","Ruang Makan 2","Klinik","Gedung Kelas E","Gedung Kelas A","Ruang Makan 1"],
-  "Gedung Utama": ["Gedung Utama","Gedung WI","Aula","Gedung Sarpras","Gedung Kepegawaian","Gedung Arsip"],
+  "Pos Asrama": ["Gedung Asrama 2","Ruang Makan 2","Klinik","Gedung Kelas E","Gedung Kelas A","Ruang Makan 1","Gedung Genset"],
+  "Gedung Utama": ["Gedung Utama","Gedung WI","Aula","Gedung Sarpras","Gedung Kepegawaian","Gedung Arsip","Area Parkir"],
   "Pos Utama": ["Area Pos Utama","Taman","Gedung Kantin","Masjid"],
-  "Pos Guest House": ["Guest House 1","Guest House 2","Guest House 3","Guest House 4","Gedung GOR"],
+  "Pos Guest House": ["Guest House 1","Guest House 2","Guest House 3","Guest House 4","Guest House 5","Gedung GOR"],
 };
 
 const QR_PREFIX = "BBPKA2-PAMDAL-";
@@ -585,27 +619,83 @@ function useFS(key, init) {
 // Gunakan useFS untuk semua data kolaboratif
 const useData = useFS;
 
-// Kompres foto agar tidak melebihi batas Firestore (1MB)
-function kompressFoto(dataUrl, maxW=400, quality=0.25) {
+// Kompres foto agar tidak melebihi batas Firestore (1MB) + tambah timestamp overlay
+// Firestore: max 1MB per dokumen. Base64 ~33% lebih besar dari binary.
+// Target aman: base64 string < 750.000 karakter (~562KB binary) agar dokumen tidak penuh.
+function kompressFoto(dataUrl, maxW=1280, quality=0.82) {
   return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
+      // ── Tahap 1: Resize proporsional, maks 1280px lebar ──────────
       const canvas = document.createElement("canvas");
       const ratio = Math.min(1, maxW / img.width);
-      canvas.width = img.width * ratio;
-      canvas.height = img.height * ratio;
-      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-      const compressed = canvas.toDataURL("image/jpeg", quality);
-      // Jika masih > 100KB, kompres lagi
-      if (compressed.length > 130000) {
-        const canvas2 = document.createElement("canvas");
-        canvas2.width = Math.floor(canvas.width * 0.6);
-        canvas2.height = Math.floor(canvas.height * 0.6);
-        canvas2.getContext("2d").drawImage(canvas, 0, 0, canvas2.width, canvas2.height);
-        resolve(canvas2.toDataURL("image/jpeg", 0.2));
-      } else {
-        resolve(compressed);
+      canvas.width  = Math.round(img.width  * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      const ctx = canvas.getContext("2d");
+      // Aktifkan image smoothing berkualitas tinggi
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // ── Timestamp overlay ────────────────────────────────────────
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2,"0");
+      const tgl = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()}`;
+      const jam = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      const stampText = `SIPAMDAL  ${tgl}  ${jam}`;
+      const fontSize = Math.max(12, Math.floor(canvas.width / 32));
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.textBaseline = "bottom";
+      const txtW = ctx.measureText(stampText).width;
+      const padX = 8, padY = 6;
+      const bx = canvas.width - txtW - padX*2 - 4;
+      const by = canvas.height - fontSize - padY*2 - 4;
+      ctx.fillStyle = "rgba(0,0,0,0.60)";
+      ctx.fillRect(bx, by, txtW + padX*2, fontSize + padY*2 + 2);
+      ctx.fillStyle = "#ffff00";
+      ctx.fillText(stampText, bx + padX, canvas.height - padY - 4);
+      // ─────────────────────────────────────────────────────────────
+
+      // ── Tahap 2: Kompres adaptif — turunkan kualitas sampai aman ─
+      // Batas aman base64: 750.000 karakter (dokumen Firestore < 1MB)
+      const LIMIT = 750000;
+      let result = canvas.toDataURL("image/jpeg", quality);
+
+      if (result.length <= LIMIT) { resolve(result); return; }
+
+      // Turunkan kualitas dulu (pertahankan resolusi)
+      const qualitySteps = [0.72, 0.62, 0.52, 0.42];
+      for (const q of qualitySteps) {
+        result = canvas.toDataURL("image/jpeg", q);
+        if (result.length <= LIMIT) { resolve(result); return; }
       }
+
+      // Masih terlalu besar → kecilkan resolusi bertahap (960 → 800 → 640)
+      const widthSteps = [960, 800, 640];
+      for (const w of widthSteps) {
+        const r2 = Math.min(1, w / img.width);
+        const c2 = document.createElement("canvas");
+        c2.width  = Math.round(img.width  * r2);
+        c2.height = Math.round(img.height * r2);
+        const ctx2 = c2.getContext("2d");
+        ctx2.imageSmoothingEnabled = true;
+        ctx2.imageSmoothingQuality = "high";
+        ctx2.drawImage(img, 0, 0, c2.width, c2.height);
+        // Tempel ulang timestamp di canvas baru
+        ctx2.font = `bold ${Math.max(11, Math.floor(c2.width/32))}px sans-serif`;
+        ctx2.textBaseline = "bottom";
+        const tw2 = ctx2.measureText(stampText).width;
+        const bx2 = c2.width - tw2 - padX*2 - 4;
+        ctx2.fillStyle = "rgba(0,0,0,0.60)";
+        ctx2.fillRect(bx2, by, tw2 + padX*2, fontSize + padY*2 + 2);
+        ctx2.fillStyle = "#ffff00";
+        ctx2.fillText(stampText, bx2 + padX, c2.height - padY - 4);
+        result = c2.toDataURL("image/jpeg", 0.72);
+        if (result.length <= LIMIT) { resolve(result); return; }
+      }
+
+      // Fallback terakhir: 640px quality 0.50
+      resolve(result.length <= LIMIT ? result : canvas.toDataURL("image/jpeg", 0.40));
     };
     img.src = dataUrl;
   });
@@ -1320,21 +1410,24 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
     setPosAssign(updated); setConfirm(null); toast(`✓ ${nameToAssign} → ${confirm.pos}!`);
   };
 
-  // ── Rolling pos: pindah anggota dari pos lama ke pos baru ──
+  // ── Rolling pos: tukar posisi dua anggota ──
   const doRolling=()=>{
     if(!rollingFrom||!rollingTo){toast("Pilih anggota & pos tujuan!",false);return;}
-    if(rollingFrom===rollingTo){toast("Pos asal dan tujuan sama!",false);return;}
-    // Cari siapa yg ada di rollingFrom pos
+    if(rollingFrom===rollingTo){toast("Pilih anggota yang berbeda!",false);return;}
+    // Temukan pos masing-masing anggota
     const fromPos = Object.entries(posAssign).find(([,ms])=>ms?.includes(rollingFrom))?.[0];
-    const toAsgn = posAssign[rollingTo]||[]; const cap=POS_CAP[rollingTo]||1;
-    if(toAsgn.length>=cap){toast(`${rollingTo} sudah penuh!`,false);return;}
-    const updated = {...posAssign};
-    if(fromPos) updated[fromPos]=(updated[fromPos]||[]).filter(x=>x!==rollingFrom);
-    updated[rollingTo]=[...(updated[rollingTo]||[]),rollingFrom];
+    const toPos   = Object.entries(posAssign).find(([,ms])=>ms?.includes(rollingTo))?.[0];
+    if(!fromPos){toast(`${rollingFrom} belum ditempatkan di pos mana pun!`,false);return;}
+    if(!toPos){toast(`${rollingTo} belum ditempatkan di pos mana pun!`,false);return;}
+    if(fromPos===toPos){toast("Kedua anggota sudah ada di pos yang sama!",false);return;}
+    // Tukar posisi
+    const updated={...posAssign};
+    updated[fromPos]=[...(updated[fromPos]||[]).filter(x=>x!==rollingFrom),rollingTo];
+    updated[toPos]=[...(updated[toPos]||[]).filter(x=>x!==rollingTo),rollingFrom];
     setPosAssign(updated);
-    const log={id:Date.now(),ts:Date.now(),member:rollingFrom,fromPos:fromPos||"—",toPos:rollingTo};
+    const log={id:Date.now(),ts:Date.now(),member:`${rollingFrom} ⇄ ${rollingTo}`,fromPos,toPos};
     setPosRollingLog([...(posRollingLog||[]),log]);
-    toast(`Rolling: ${rollingFrom} → ${rollingTo}!`);
+    toast(`🔄 ${rollingFrom} (${fromPos}) ⇄ ${rollingTo} (${toPos})`);
     setRollingFrom(""); setRollingTo("");
   };
 
@@ -1411,19 +1504,30 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
       {mode==="rolling"&&canEdit&&(
         <div>
           <div style={{background:"rgba(0,170,255,.1)",border:"1.5px solid #67e8f9",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
-            <div style={{fontSize:13,fontWeight:800,color:"var(--accent)",marginBottom:10}}>🔄 Pindah / Rolling Pos Jaga</div>
-            <Inp label="Anggota yang dipindah" value={rollingFrom} onChange={e=>setRollingFrom(e.target.value)} as="select">
-              <option value="">— Pilih Anggota —</option>
+            <div style={{fontSize:13,fontWeight:800,color:"var(--accent)",marginBottom:4}}>🔄 Tukar Posisi (Rolling)</div>
+            <div style={{fontSize:11,color:"var(--tx3)",marginBottom:12}}>Pilih dua anggota yang akan saling bertukar pos.</div>
+            <Inp label="Anggota A (yang dipindah)" value={rollingFrom} onChange={e=>setRollingFrom(e.target.value)} as="select">
+              <option value="">— Pilih Anggota A —</option>
               {members.map(m=>{
                 const curPos=Object.entries(posAssign).find(([,ms])=>ms?.includes(m))?.[0]||"Belum ditempatkan";
                 return <option key={m} value={m}>{m} ({curPos})</option>;
               })}
             </Inp>
-            <Inp label="Pindah ke pos" value={rollingTo} onChange={e=>setRollingTo(e.target.value)} as="select">
-              <option value="">— Pilih Pos Tujuan —</option>
-              {POS_LIST.map(p=>{
-                const asgn=posAssign[p]||[]; const cap=POS_CAP[p]||1;
-                return <option key={p} value={p} disabled={asgn.length>=cap}>{p} ({asgn.length}/{cap})</option>;
+            {/* Preview panah tukar */}
+            {rollingFrom&&rollingTo&&(()=>{
+              const posA=Object.entries(posAssign).find(([,ms])=>ms?.includes(rollingFrom))?.[0]||"—";
+              const posB=Object.entries(posAssign).find(([,ms])=>ms?.includes(rollingTo))?.[0]||"—";
+              return (
+                <div style={{textAlign:"center",padding:"6px 0",fontSize:12,color:"var(--accent)",fontWeight:700}}>
+                  {rollingFrom} [{posA}] ⇄ {rollingTo} [{posB}]
+                </div>
+              );
+            })()}
+            <Inp label="Anggota B (ditukar dengan)" value={rollingTo} onChange={e=>setRollingTo(e.target.value)} as="select">
+              <option value="">— Pilih Anggota B —</option>
+              {members.filter(m=>m!==rollingFrom).map(m=>{
+                const curPos=Object.entries(posAssign).find(([,ms])=>ms?.includes(m))?.[0]||"Belum ditempatkan";
+                return <option key={m} value={m}>{m} ({curPos})</option>;
               })}
             </Inp>
             <div style={{display:"flex",gap:8,marginTop:4}}>
@@ -1440,7 +1544,7 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
                 <div key={r.id} style={{padding:"6px 0",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:13}}>🔄</span>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:12.5,fontWeight:700,color:"var(--tx2)"}}>{r.member}: {r.fromPos} → {r.toPos}</div>
+                    <div style={{fontSize:12.5,fontWeight:700,color:"var(--tx2)"}}>{r.member}</div>
                     <div style={{fontSize:10.5,color:"var(--tx3)"}}>{fmtT(r.ts)}</div>
                   </div>
                 </div>
@@ -1685,7 +1789,7 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
   const handlePhoto=(e)=>{
     const file=e.target.files[0]; if(!file) return;
     const r=new FileReader();
-    r.onload=()=>kompressFoto(r.result,400,0.25).then(setPhoto);
+    r.onload=()=>kompressFoto(r.result).then(setPhoto);
     r.readAsDataURL(file);
   };
 
@@ -1865,7 +1969,7 @@ function PhotoPicker({photo, setPhoto, label="📷 Foto Bukti", color="var(--acc
   const ref = useRef();
   const handle = (e) => {
     const file = e.target.files[0]; if(!file) return;
-    const r = new FileReader(); r.onload = () => { kompressFoto(r.result,400,0.25).then(compressed=>setPhoto(compressed)); }; r.readAsDataURL(file);
+    const r = new FileReader(); r.onload = () => { kompressFoto(r.result).then(compressed=>setPhoto(compressed)); }; r.readAsDataURL(file);
   };
   const remove = () => { setPhoto(null); if(ref.current) ref.current.value=""; };
   const lightBg = color==="#dc2626"?"rgba(255,50,50,.1)":color==="#a78bfa"?"rgba(167,139,250,.1)":color==="#ffcc00"?"rgba(255,204,0,.07)":color==="var(--ok)"?"var(--green-card)":"var(--green-card)";
@@ -4218,11 +4322,8 @@ function SearchTab({ packages, guests, mutations, incidents, patrols }) {
 // ─── KELUAR SEMENTARA ────────────────────────────────────────────────────────
 function KeluarTab({ keluarData, setKeluarData, toast, canEdit, isAdmin, now }) {
   const [open, setOpen] = useState(false);
-  const [fm, setFm] = useState({ nama:"", tujuan:"Makan Malam", keterangan:"", estimasi:"" });
+  const [fm, setFm] = useState({ nama:"", plat:"" });
   const f = (k,v) => setFm(p=>({...p,[k]:v}));
-
-  const TUJUAN_LIST = ["Makan Malam","Makan Siang","Hiburan / Jalan-jalan","Warung Kopi","Minimarket","Lainnya"];
-  const TUJUAN_ICON = {"Makan Malam":"🍽","Makan Siang":"🍱","Hiburan / Jalan-jalan":"🎭","Warung Kopi":"☕","Minimarket":"🏪","Lainnya":"📍"};
 
   const sedangDiLuar = keluarData.filter(k => !k.kembali);
   const sudahKembali = keluarData.filter(k => k.kembali);
@@ -4231,9 +4332,9 @@ function KeluarTab({ keluarData, setKeluarData, toast, canEdit, isAdmin, now }) 
     if (!fm.nama.trim()) { toast("Nama peserta wajib diisi!", false); return; }
     const entry = { ...fm, id: Date.now(), tsKeluar: Date.now(), kembali: null, tsKembali: null };
     setKeluarData([...keluarData, entry]);
-    setFm({ nama:"", tujuan:"Makan Malam", keterangan:"", estimasi:"" });
+    setFm({ nama:"", plat:"" });
     setOpen(false);
-    toast(`${fm.nama} dicatat keluar — ${fm.tujuan}`);
+    toast(`${fm.nama} dicatat keluar${fm.plat ? " — " + fm.plat.toUpperCase() : ""}`);
   };
 
   const tandaiKembali = (id) => {
@@ -4295,11 +4396,11 @@ function KeluarTab({ keluarData, setKeluarData, toast, canEdit, isAdmin, now }) 
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5}}>
                 <div>
                   <div style={{fontSize:14,fontWeight:800,color:"var(--tx)"}}>{k.nama}</div>
-                  <div style={{fontSize:12,color:"#fb923c",fontWeight:600,marginTop:2}}>
-                    {TUJUAN_ICON[k.tujuan]||"📍"} {k.tujuan}
-                  </div>
-                  {k.keterangan && <div style={{fontSize:11,color:"var(--tx3)",marginTop:2}}>📝 {k.keterangan}</div>}
-                  {k.estimasi && <div style={{fontSize:11,color:"#fb923c",marginTop:2}}>⏰ Estimasi kembali: {k.estimasi}</div>}
+                  {k.plat && (
+                    <div style={{fontSize:13,color:"#fb923c",fontWeight:700,marginTop:3,background:"rgba(251,146,60,.15)",display:"inline-block",padding:"2px 8px",borderRadius:6,letterSpacing:1}}>
+                      🚗 {k.plat.toUpperCase()}
+                    </div>
+                  )}
                 </div>
                 <div style={{textAlign:"right",flexShrink:0}}>
                   <div style={{fontSize:10.5,color:"var(--tx3)"}}>Keluar {fmtT(k.tsKeluar)}</div>
@@ -4336,7 +4437,7 @@ function KeluarTab({ keluarData, setKeluarData, toast, canEdit, isAdmin, now }) 
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
                   <div style={{fontSize:13,fontWeight:700,color:"var(--tx2)"}}>{k.nama}</div>
-                  <div style={{fontSize:11,color:"var(--tx4)"}}>{TUJUAN_ICON[k.tujuan]||"📍"} {k.tujuan}</div>
+                  {k.plat && <div style={{fontSize:11,color:"var(--tx4)"}}>🚗 {k.plat.toUpperCase()}</div>}
                 </div>
                 <div style={{textAlign:"right"}}>
                   <div style={{fontSize:10,color:"var(--tx4)"}}>Keluar {fmtT(k.tsKeluar)}</div>
@@ -4364,11 +4465,7 @@ function KeluarTab({ keluarData, setKeluarData, toast, canEdit, isAdmin, now }) 
       {/* Modal catat keluar */}
       <Modal open={open} onClose={() => setOpen(false)} title="Catat Peserta Keluar">
         <Inp label="Nama Peserta" value={fm.nama} onChange={e=>f("nama",e.target.value)} placeholder="Nama lengkap peserta"/>
-        <Inp label="Tujuan" value={fm.tujuan} onChange={e=>f("tujuan",e.target.value)} as="select">
-          {TUJUAN_LIST.map(t => <option key={t}>{t}</option>)}
-        </Inp>
-        <Inp label="Keterangan (opsional)" value={fm.keterangan} onChange={e=>f("keterangan",e.target.value)} placeholder="Mis: makan di warteg dekat gerbang"/>
-        <Inp label="Estimasi Kembali (opsional)" value={fm.estimasi} onChange={e=>f("estimasi",e.target.value)} placeholder="Contoh: 21:30 / 1 jam lagi"/>
+        <Inp label="Plat Nomor Kendaraan (opsional)" value={fm.plat} onChange={e=>f("plat",e.target.value.toUpperCase())} placeholder="Contoh: D 1234 ABC"/>
         <div style={{display:"flex",gap:8}}>
           <Btn onClick={submit} color="var(--y)" sx={{color:"#1a1a1a"}} size="lg">Simpan</Btn>
           <Btn onClick={() => setOpen(false)} color="var(--tx4)" variant="outline" size="lg">Batal</Btn>
@@ -4397,7 +4494,7 @@ const NAV_TABS_ADMIN = [
 // ═══════════════════════════════════════════════════════════════════════════════
 // RESET DATA LAMA — jalankan sekali saat versi baru pertama kali dibuka
 // ═══════════════════════════════════════════════════════════════════════════════
-const APP_VERSION = "v2.1-clean"; // ganti versi ini untuk trigger reset ulang
+const APP_VERSION = "v2.1-clean-4"; // ganti versi ini untuk trigger reset ulang
 (function clearOldData() {
   if (localStorage.getItem("pad_app_version") === APP_VERSION) return;
   const KEEP = ["pad_theme", "pad_pins", "pad_admin_pin", "pad_app_version"];
@@ -4529,17 +4626,19 @@ function App() {
   const canEdit = isAdmin || currentUser.regu === reguHari;
   const ACTIVE_NAV = isAdmin ? NAV_TABS_ADMIN : NAV_TABS;
 
-  const MORE_TABS = [
-    ...(isAdmin ? [] : [{id:"instruksi", label:"Instruksi Pimpinan", icon:"shield"}]),
-    ...(isAdmin ? [{id:"instruksi", label:"Instruksi Pimpinan", icon:"shield"}, {id:"pimpinan", label:"Dashboard Pimpinan", icon:"home"}] : []),
-    { id: "pos", label: "Penempatan Pos", icon: "pos" },
+  const MORE_TABS = isAdmin ? [
+    {id:"instruksi", label:"Instruksi Pimpinan", icon:"shield"},
+    {id:"pimpinan", label:"Dashboard Pimpinan", icon:"home"},
     { id: "absen", label: "Absensi", icon: "cal" },
-    { id: "package", label: "Paket & Kurir", icon: "pkg" },
-    { id: "guest", label: "Tamu & Asrama", icon: "ppl" },
+    { id: "mutation", label: "Mutasi Laporan", icon: "file" },
+    { id: "inventaris", label: "Inventaris Barang", icon: "pkg" },
+    { id: "profile", label: "Admin", icon: "ppl" },
+  ] : [
+    {id:"instruksi", label:"Instruksi Pimpinan", icon:"shield"},
     { id: "keluar", label: "Peserta Keluar", icon: "ppl" },
     { id: "mutation", label: "Mutasi Laporan", icon: "file" },
     { id: "inventaris", label: "Inventaris Barang", icon: "pkg" },
-    { id: "profile", label: isAdmin ? "Admin" : "Profil Saya", icon: "ppl" },
+    { id: "profile", label: "Profil Saya", icon: "ppl" },
   ];
 
   const pending = packages.filter(p => p.status === "Belum Diambil").length;
@@ -4563,10 +4662,6 @@ function App() {
           </div>
         </div>
         <div style={{ flex: 1 }} />
-        {/* Settings icon (no theme pill in header) */}
-        <button onClick={() => setSettingsOpen(true)} style={{background:"none",border:"none",cursor:"pointer",padding:6,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--tx3)",marginRight:4}} title="Pengaturan">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </button>
         {/* Theme toggle pill in header */}
         <div className="theme-pill" style={{marginRight:4}}>
           {[["dark","🌙"],["light","☀️"]].map(([v,icon])=>(
@@ -4636,26 +4731,7 @@ function App() {
         </div>
       )}
 
-      {/* FAB — Aksi Cepat */}
-      {canEdit && (
-        <div className="fab-container">
-          {fabOpen && [
-            {icon:"🔍", label:"Catat Patroli", tab:"patrol", color:"#38c172"},
-            {icon:"⚠️", label:"Laporkan Insiden",tab:"incident",color:"#e53e3e"},
-            {icon:"📋", label:"Serah Terima",  tab:"mutation",color:"var(--tx2)"},
-          ].map((a,i)=>(
-            <div key={a.tab} className="fab-item" style={{animationDelay:`${i*0.04}s`}}>
-              <span className="fab-label">{a.label}</span>
-              <button className="fab-btn" style={{background:a.color}} onClick={()=>{ setTab(a.tab); setFabOpen(false); setMoreOpen(false); }}>
-                <span>{a.icon}</span>
-              </button>
-            </div>
-          ))}
-          <button className={`fab-main ${fabOpen?"open":""}`} onClick={()=>setFabOpen(v=>!v)}>
-            +
-          </button>
-        </div>
-      )}
+      {/* FAB dihapus */}
 
       {/* CONTENT */}
       <main style={{ flex: 1, padding: "14px 14px 0", overflowY: "auto" }}>
