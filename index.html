@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <!-- Cache busting: paksa browser selalu ambil versi terbaru -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <meta http-equiv="Pragma" content="no-cache"/>
+  <meta http-equiv="Expires" content="0"/>
   <!-- PWA: Theme & display -->
   <meta name="theme-color" content="var(--dk)"/>
   <meta name="color-scheme" content="dark"/>
@@ -46,10 +50,10 @@
 
     /* === DARK MODE — Pure Charcoal === */
     :root {
-      --accent:#5b9bd5; --accent-light:#7ab3e0; --accent-dim:#4a87c0;
+      --accent:#4169E1; --accent-light:#6385e8; --accent-dim:#2f52c0;
       --r:#d95f52; --y:#c49a3c; --pu:#8b82c4; --ok:#4caf82;
       --dk:#0e0e0e; --pn:#141414; --br:rgba(255,255,255,.05);
-      --tx:#e8e8e8; --tx2:#c0c0c0; --tx3:#888888; --tx4:#404040;
+      --tx:#e8e8e8; --tx2:#c0c0c0; --tx3:#999999; --tx4:#666666;
       --card:rgba(255,255,255,.03); --card2:rgba(255,255,255,.05);
       --card-solid:#1a1a1a; --card2-solid:#202020;
       --border:rgba(255,255,255,.06); --border2:rgba(255,255,255,.10);
@@ -70,7 +74,7 @@
 
     /* === LIGHT MODE — Clean White === */
     :root.light {
-      --accent:#2c6da8; --accent-light:#3a7fc0; --accent-dim:#1e5990;
+      --accent:#2f52c0; --accent-light:#4169E1; --accent-dim:#1e3d99;
       --r:#b84035; --y:#8a6820; --pu:#6055a8; --ok:#1e8858;
       --dk:#f0f0f0; --pn:#f8f8f8; --br:rgba(0,0,0,.05);
       --tx:#111111; --tx2:#333333; --tx3:#666666; --tx4:#aaaaaa;
@@ -94,13 +98,91 @@
 
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 
+    /* ── Smooth Theme Transition ── */
+    :root {
+      transition:
+        --accent .5s ease, --accent-light .5s ease, --accent-dim .5s ease,
+        --dk .5s ease, --pn .5s ease, --tx .5s ease, --tx2 .5s ease,
+        --card .5s ease, --card2 .5s ease, --card-solid .5s ease,
+        --border .5s ease, --border2 .5s ease;
+    }
+
     body{
       margin:0;padding:0;
       font-family:'Plus Jakarta Sans','Segoe UI Variable','Segoe UI',system-ui,sans-serif;
       background:var(--dk);
       overscroll-behavior:none;
       color:var(--tx);
-      transition:background .25s,color .25s;
+      transition:background .5s ease,color .5s ease;
+    }
+
+    /* ── HUD Scanline Effect on Hero ── */
+    .hero-hud-scanline {
+      position:relative;
+      overflow:hidden;
+    }
+    .hero-hud-scanline::after {
+      content:'';
+      position:absolute;
+      inset:0;
+      background:repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(255,255,255,.018) 3px,
+        rgba(255,255,255,.018) 4px
+      );
+      pointer-events:none;
+      z-index:1;
+    }
+    :root.light .hero-hud-scanline::after {
+      background:repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(0,0,0,.025) 3px,
+        rgba(0,0,0,.025) 4px
+      );
+    }
+
+    /* ── HUD Corner Brackets on stat cards ── */
+    .hud-card {
+      position:relative;
+    }
+    .hud-card::before, .hud-card::after {
+      content:'';
+      position:absolute;
+      width:10px;
+      height:10px;
+      pointer-events:none;
+      opacity:.5;
+      z-index:2;
+    }
+    .hud-card::before {
+      top:4px; left:4px;
+      border-top:2px solid var(--accent-light);
+      border-left:2px solid var(--accent-light);
+      border-radius:2px 0 0 0;
+    }
+    .hud-card::after {
+      bottom:4px; right:4px;
+      border-bottom:2px solid var(--accent-light);
+      border-right:2px solid var(--accent-light);
+      border-radius:0 0 2px 0;
+    }
+
+    /* ── Glow on stat numbers ── */
+    .stat-number {
+      font-size:32px;font-weight:900;
+      text-shadow:0 0 12px currentColor;
+      transition:color .3s ease,text-shadow .3s ease;
+    }
+    .stat-number.stat-critical {
+      animation:statPulse 1.8s ease-in-out infinite;
+    }
+    @keyframes statPulse {
+      0%,100%{opacity:1;text-shadow:0 0 12px currentColor;}
+      50%{opacity:.75;text-shadow:0 0 24px currentColor;}
     }
 
     /* Tactical glow — dark only */
@@ -246,11 +328,6 @@
     }
 
     /* ── Tactical stat card ─────────────────────────────────────── */
-    .stat-number {
-      font-size: 32px; font-weight: 900; line-height: 1;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: -1px;
-    }
     .stat-label {
       font-size: 9.5px; font-weight: 700; text-transform: uppercase;
       letter-spacing: 0.8px; color: var(--tx2); margin-top: 4px;
@@ -261,12 +338,90 @@
     /* Fluent card hover */
     .fluent-card:hover { background: var(--card2) !important; }
 
+    /* ── Enhanced Stat Cards v2 ─────────────────────────────────── */
+    .stat-card-v2 {
+      position: relative;
+      border-radius: 16px !important;
+      overflow: hidden;
+      transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .18s ease !important;
+    }
+    .stat-card-v2:active { transform: scale(.96); }
+    .stat-card-v2::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 16px;
+      opacity: .07;
+      background: var(--card-accent, transparent);
+      pointer-events: none;
+    }
+    .stat-card-v2-inner-glow {
+      position: absolute;
+      top: -30%;
+      right: -10%;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      filter: blur(22px);
+      opacity: .22;
+      pointer-events: none;
+      transition: opacity .3s;
+    }
+    .stat-card-v2-stripe {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      border-radius: 16px 16px 0 0;
+      opacity: .85;
+    }
+
+    /* ── Pimpinan Progress Ring in Navbar ───────────────────────── */
+    @keyframes pimpinanRingGlow {
+      0%,100% { filter: drop-shadow(0 0 4px rgba(76,175,130,.5)); }
+      50%      { filter: drop-shadow(0 0 10px rgba(76,175,130,.85)); }
+    }
+    @keyframes pimpinanRingGlowRed {
+      0%,100% { filter: drop-shadow(0 0 4px rgba(229,62,62,.5)); }
+      50%      { filter: drop-shadow(0 0 10px rgba(229,62,62,.85)); }
+    }
+    .pimpinan-ring-hadir svg {
+      animation: pimpinanRingGlow 2.4s ease-in-out infinite;
+    }
+    .pimpinan-ring-keluar svg {
+      animation: pimpinanRingGlowRed 2s ease-in-out infinite;
+    }
+    .pimpinan-ring-knob {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1px;
+      pointer-events: none;
+    }
+
+    /* ── Patrol Ring card upgrade ───────────────────────────────── */
+    .patrol-ring-card-v2 {
+      border-radius: 16px !important;
+      overflow: hidden;
+      transition: transform .18s cubic-bezier(.22,1,.36,1) !important;
+    }
+    .patrol-ring-card-v2:active { transform: scale(.96); }
+    @keyframes patrol-ring-arc-draw {
+      from { stroke-dashoffset: var(--ring-full,176); }
+      to   { stroke-dashoffset: var(--ring-offset,176); }
+    }
+    .patrol-ring-arc {
+      animation: patrol-ring-arc-draw .9s cubic-bezier(.22,1,.36,1) both .2s;
+    }
+
     /* Light mode select/option fix */
     :root.light select option { background: var(--card-solid); color: var(--tx); }
 
     /* Light mode input placeholder */
     :root.light ::placeholder { color: var(--tx4); opacity: 1; }
-    ::placeholder { color: var(--tx4); opacity: 0.7; }
+    ::placeholder { color: var(--tx3); opacity: 0.6; }
 
     /* Light mode scrollbar */
     :root.light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); }
@@ -277,10 +432,10 @@
     }
 
     /* Light mode patrol circles — darker text */
-    :root.light .patrol-circle-txt-asrama  { color: #0077aa !important; }
-    :root.light .patrol-circle-txt-gedutama{ color: #1a7a40 !important; }
-    :root.light .patrol-circle-txt-posutama{ color: #004a96 !important; }
-    :root.light .patrol-circle-txt-guesthouse{ color: #5b3ec4 !important; }
+    :root.light .patrol-circle-txt-asrama  { color: #007a40 !important; }
+    :root.light .patrol-circle-txt-gedutama{ color: #007a99 !important; }
+    :root.light .patrol-circle-txt-posutama{ color: #004ab0 !important; }
+    :root.light .patrol-circle-txt-guesthouse{ color: #6a1eb8 !important; }
     :root.light .patrol-time-label { color: var(--tx3) !important; }
 
     @media print {
@@ -289,6 +444,39 @@
       .print-modal { position: static !important; background: white !important; padding: 0 !important; }
       nav, header { display: none !important; }
     }
+
+    /* ── Sliding Alert Capsule ───────────────────────────────── */
+    @keyframes alertSlideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes alertTextSlide {
+      0%   { transform: translateX(0); opacity: 1; }
+      15%  { transform: translateX(-6px); opacity: 0; }
+      20%  { transform: translateX(6px); opacity: 0; }
+      35%  { transform: translateX(0); opacity: 1; }
+      100% { transform: translateX(0); opacity: 1; }
+    }
+    .alert-capsule {
+      animation: alertSlideIn .3s cubic-bezier(.22,1,.36,1) both;
+    }
+    .alert-text-slide {
+      animation: alertTextSlide 4s ease-in-out infinite;
+    }
+
+    /* === ACCENT COLOR THEMES === */
+    :root.accent-blue   { --accent:#4169E1; --accent-light:#6385e8; --accent-dim:#2f52c0; --pill-active:rgba(65,105,225,.12); }
+    :root.light.accent-blue { --accent:#2f52c0; --accent-light:#4169E1; --accent-dim:#1e3d99; --pill-active:rgba(47,82,192,.10); }
+    :root.accent-green  { --accent:#10b981; --accent-light:#34d399; --accent-dim:#059669; --pill-active:rgba(16,185,129,.12); }
+    :root.light.accent-green { --accent:#059669; --accent-light:#10b981; --accent-dim:#047857; --pill-active:rgba(5,150,105,.10); }
+    :root.accent-purple { --accent:#6366f1; --accent-light:#818cf8; --accent-dim:#4f46e5; --pill-active:rgba(99,102,241,.12); }
+    :root.light.accent-purple { --accent:#4f46e5; --accent-light:#6366f1; --accent-dim:#3730a3; --pill-active:rgba(79,70,229,.10); }
+    :root.accent-red    { --accent:#c0392b; --accent-light:#e05444; --accent-dim:#992d22; --pill-active:rgba(192,57,43,.12); }
+    :root.light.accent-red { --accent:#992d22; --accent-light:#c0392b; --accent-dim:#7a2219; --pill-active:rgba(153,45,34,.10); }
+    :root.accent-orange { --accent:#d4a017; --accent-light:#e8b830; --accent-dim:#b08010; --pill-active:rgba(212,160,23,.12); }
+    :root.light.accent-orange { --accent:#b08010; --accent-light:#d4a017; --accent-dim:#8a6408; --pill-active:rgba(176,128,16,.10); }
+    :root.accent-teal   { --accent:#64748b; --accent-light:#8494a8; --accent-dim:#4e5d6e; --pill-active:rgba(100,116,139,.12); }
+    :root.light.accent-teal { --accent:#4e5d6e; --accent-light:#64748b; --accent-dim:#3a4a58; --pill-active:rgba(78,93,110,.10); }
 
     /* ── Page transition ─────────────────────────────────────────── */
     @keyframes tabEnter {
@@ -363,7 +551,7 @@
       94%          { opacity: 1; }
       96%          { opacity: .6; }
     }
-    .stat-critical { animation: numFlicker 4s ease-in-out infinite; }
+    /* stat-critical handled by main definition */
 
     /* Header badge bounce */
     @keyframes badgeBounce {
@@ -383,12 +571,354 @@
       animation: blinkOrange 1.2s ease-in-out infinite;
     }
 
+    /* ── Hero content transition — mechanical snap-in ──────────── */
+    @keyframes heroContentIn {
+      from { opacity: 0; transform: translateY(6px) scale(.99); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ── Staggered card entrance ─────────────────────────────────── */
+    @keyframes cardStagger {
+      from { opacity: 0; transform: translateY(18px) scale(.96); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .card-stagger-1 { animation: cardStagger .32s cubic-bezier(.22,1,.36,1) .05s both; }
+    .card-stagger-2 { animation: cardStagger .32s cubic-bezier(.22,1,.36,1) .13s both; }
+    .card-stagger-3 { animation: cardStagger .32s cubic-bezier(.22,1,.36,1) .21s both; }
+    .card-stagger-4 { animation: cardStagger .32s cubic-bezier(.22,1,.36,1) .29s both; }
+
+    /* ── Shimmer sweep on buttons ───────────────────────────────── */
+    @keyframes shimmerSweep {
+      0%   { transform: translateX(-130%) skewX(-18deg); }
+      100% { transform: translateX(230%) skewX(-18deg); }
+    }
+    .shimmer-btn {
+      position: relative;
+      overflow: hidden;
+    }
+    .shimmer-btn::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 45%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent);
+      animation: shimmerSweep 3s ease-in-out 1.5s infinite;
+      pointer-events: none;
+    }
+
+    /* ── Card glow pulse — data kritis ─────────────────────────── */
+    @keyframes cardGlowPulse {
+      0%,100% { box-shadow: 0 4px 18px var(--glow-col, rgba(255,153,0,.18)), 0 1px 4px rgba(0,0,0,.5); }
+      50%      { box-shadow: 0 0 26px var(--glow-col, rgba(255,153,0,.5)), 0 4px 18px var(--glow-col, rgba(255,153,0,.25)), 0 1px 4px rgba(0,0,0,.5); }
+    }
+    .card-glow-warn {
+      --glow-col: rgba(255,153,0,.4);
+      animation: cardGlowPulse 2.4s ease-in-out infinite;
+    }
+    .card-glow-purple {
+      --glow-col: rgba(139,139,255,.38);
+      animation: cardGlowPulse 2.6s ease-in-out infinite;
+    }
+    .card-glow-orange {
+      --glow-col: rgba(251,146,60,.38);
+      animation: cardGlowPulse 2.8s ease-in-out infinite;
+    }
+
+    /* ── Progress ring fill animation ───────────────────────────── */
+    @keyframes ringFill {
+      from { stroke-dashoffset: var(--ring-full, 220); }
+      to   { stroke-dashoffset: var(--ring-offset, 110); }
+    }
+
+    /* ── Stat label boost — high contrast ───────────────────────── */
+    .stat-label {
+      font-size: 10px !important;
+      font-weight: 800 !important;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--tx) !important;
+      margin-top: 5px;
+      text-shadow: 0 1px 3px rgba(0,0,0,.5);
+    }
+    :root.light .stat-label { text-shadow: none; color: var(--tx2) !important; }
+
     /* ── Keluar card slide-in ───────────────────────────────────── */
     @keyframes cardSlideIn {
       from { opacity: 0; transform: translateX(-14px); }
       to   { opacity: 1; transform: translateX(0); }
     }
     .keluar-card { animation: cardSlideIn .25s ease both; }
+
+    /* ══════════════════════════════════════════════════════════════
+       KONSISTENSI DESAIN — Seragamkan semua tab dengan Dashboard
+       Versi: v2.4 Consistency Update
+    ══════════════════════════════════════════════════════════════ */
+
+    /* ── Tab view fade-in (semua tab) ──────────────────────────── */
+    .tab-view {
+      animation: tabFadeIn .22s cubic-bezier(.22,1,.36,1) both;
+      padding-bottom: 80px;
+    }
+    @keyframes tabFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Stat summary tile (kartu ringkasan 2–4 kolom) ─────────── */
+    .stat-tile {
+      border-radius: 12px;
+      padding: 11px 13px;
+      text-align: center;
+      border: 1.5px solid var(--border2);
+      background: var(--card-solid);
+      transition: background .2s, border .2s;
+    }
+    .stat-tile:hover { background: var(--card2); }
+    .stat-tile-number {
+      font-size: 22px; font-weight: 900; line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-tile-label {
+      font-size: 10.5px; font-weight: 700; margin-top: 2px;
+      text-transform: uppercase; letter-spacing: .5px;
+    }
+
+    /* ── Section divider label ─────────────────────────────────── */
+    .section-label {
+      font-size: 11.5px; font-weight: 800; letter-spacing: .6px;
+      text-transform: uppercase; margin-bottom: 8px;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .section-label::after {
+      content: '';
+      flex: 1; height: 1px;
+      background: var(--border2);
+    }
+
+    /* ── Data card (kartu list item) ───────────────────────────── */
+    .data-card {
+      background: var(--card-solid);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 11px 13px;
+      margin-bottom: 9px;
+      transition: background .15s, border .15s;
+    }
+    .data-card:hover { background: var(--card2); border-color: var(--border2); }
+
+    /* ── Audit log card ────────────────────────────────────────── */
+    .audit-card {
+      background: var(--card-solid);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 7px;
+      display: flex; gap: 10px;
+      align-items: flex-start;
+      transition: background .15s;
+    }
+    .audit-card:hover { background: var(--card2); }
+
+    /* ── Summary section card (log / riwayat) ──────────────────── */
+    .log-card {
+      background: var(--card-solid);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-top: 4px;
+      margin-bottom: 14px;
+    }
+    .log-card-title {
+      font-size: 12px; font-weight: 800;
+      color: var(--accent); margin-bottom: 10px;
+    }
+
+    /* ── Sub-tab pill selector (Admin, Absen, dll.) ─────────────── */
+    .subtab-bar {
+      display: flex; gap: 0;
+      background: var(--card2);
+      border-radius: 11px;
+      padding: 3px;
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+    }
+    .subtab-btn {
+      flex: 1; border: none; border-radius: 8px;
+      padding: 8px 4px; font-size: 11px; font-weight: 700;
+      cursor: pointer; font-family: inherit;
+      background: transparent; color: var(--tx3);
+      transition: all .2s;
+    }
+    .subtab-btn.active {
+      background: var(--card-solid);
+      color: var(--accent);
+      box-shadow: 0 1px 6px rgba(0,0,0,.12);
+    }
+
+    /* ── Member card list ──────────────────────────────────────── */
+    .member-card {
+      background: var(--card-solid);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border: 1.5px solid var(--border);
+      transition: background .15s, border .15s, transform .1s;
+    }
+    .member-card:hover {
+      background: var(--card2);
+      border-color: var(--border2);
+      transform: translateY(-1px);
+    }
+    .member-card:active { transform: scale(.98); }
+
+    /* ── Inventaris barang card ─────────────────────────────────── */
+    .inv-card {
+      background: var(--card-solid);
+      border-radius: 14px;
+      border: 1.5px solid var(--border);
+      padding: 12px 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      transition: background .15s, border .15s;
+    }
+    .inv-card:hover { background: var(--card2); }
+
+    /* ── Light mode overrides ───────────────────────────────────── */
+    :root.light .data-card { box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+    :root.light .log-card  { box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+    :root.light .inv-card  { box-shadow: 0 1px 6px rgba(0,0,0,.06); }
+
+    /* ── Patrol pos group card ──────────────────────────────────── */
+    .patrol-pos-card { transition: transform .15s, box-shadow .3s; }
+    .patrol-pos-card:hover { transform: translateY(-2px); }
+
+    /* COLORED BORDERS — semua card */
+    :root {
+      --cb-green:  rgba(76,175,130,.75);  --cb-blue:   rgba(91,168,255,.75);
+      --cb-red:    rgba(217,95,82,.75);   --cb-yellow: rgba(196,154,60,.75);
+      --cb-purple: rgba(139,130,196,.75); --cb-teal:   rgba(56,200,232,.75);
+      --cb-orange: rgba(251,146,60,.75);
+      --cb-green-glow:rgba(76,175,130,.18);  --cb-blue-glow:rgba(91,168,255,.18);
+      --cb-red-glow:rgba(217,95,82,.18);     --cb-yellow-glow:rgba(196,154,60,.18);
+      --cb-purple-glow:rgba(139,130,196,.18);--cb-teal-glow:rgba(56,200,232,.18);
+      --cb-orange-glow:rgba(251,146,60,.18);
+    }
+    .stat-tile {
+      border: 1.5px solid var(--cb-blue) !important;
+      box-shadow: 0 0 10px var(--cb-blue-glow), var(--shadow) !important;
+      position: relative; overflow: hidden;
+    }
+    .stat-tile::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:2.5px;
+      background:linear-gradient(90deg,var(--cb-blue),transparent);
+      border-radius:12px 12px 0 0; pointer-events:none; z-index:1;
+    }
+    .stat-tile-green  { border-color:var(--cb-green)  !important; box-shadow:0 0 10px var(--cb-green-glow),var(--shadow)  !important; }
+    .stat-tile-green::before  { background:linear-gradient(90deg,var(--cb-green),transparent); }
+    .stat-tile-red    { border-color:var(--cb-red)    !important; box-shadow:0 0 10px var(--cb-red-glow),var(--shadow)    !important; }
+    .stat-tile-red::before    { background:linear-gradient(90deg,var(--cb-red),transparent); }
+    .stat-tile-yellow { border-color:var(--cb-yellow) !important; box-shadow:0 0 10px var(--cb-yellow-glow),var(--shadow) !important; }
+    .stat-tile-yellow::before { background:linear-gradient(90deg,var(--cb-yellow),transparent); }
+    .stat-tile-purple { border-color:var(--cb-purple) !important; box-shadow:0 0 10px var(--cb-purple-glow),var(--shadow) !important; }
+    .stat-tile-purple::before { background:linear-gradient(90deg,var(--cb-purple),transparent); }
+    .stat-tile-teal   { border-color:var(--cb-teal)   !important; box-shadow:0 0 10px var(--cb-teal-glow),var(--shadow)   !important; }
+    .stat-tile-teal::before   { background:linear-gradient(90deg,var(--cb-teal),transparent); }
+    .stat-tile-orange { border-color:var(--cb-orange) !important; box-shadow:0 0 10px var(--cb-orange-glow),var(--shadow) !important; }
+    .stat-tile-orange::before { background:linear-gradient(90deg,var(--cb-orange),transparent); }
+    .data-card {
+      border: 1.5px solid var(--cb-blue) !important;
+      box-shadow: 0 0 8px var(--cb-blue-glow), var(--shadow) !important;
+      position: relative; overflow: hidden;
+    }
+    .data-card::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:2px;
+      background:linear-gradient(90deg,var(--cb-blue),transparent);
+      border-radius:12px 12px 0 0; pointer-events:none; z-index:1;
+    }
+    .data-card:hover { border-color:var(--cb-teal) !important; box-shadow:0 0 14px var(--cb-teal-glow),var(--shadow-lg) !important; }
+    .audit-card {
+      border: 1px solid var(--cb-purple) !important;
+      box-shadow: 0 0 8px var(--cb-purple-glow), var(--shadow) !important;
+      position: relative; overflow: hidden;
+    }
+    .audit-card::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:2px;
+      background:linear-gradient(90deg,var(--cb-purple),transparent);
+      border-radius:10px 10px 0 0; pointer-events:none; z-index:1;
+    }
+    .log-card {
+      border: 1px solid var(--cb-teal) !important;
+      box-shadow: 0 0 10px var(--cb-teal-glow), var(--shadow) !important;
+      position: relative; overflow: hidden;
+    }
+    .log-card::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:2px;
+      background:linear-gradient(90deg,var(--cb-teal),transparent);
+      border-radius:12px 12px 0 0; pointer-events:none; z-index:1;
+    }
+    .member-card {
+      border: 1.5px solid var(--cb-green) !important;
+      box-shadow: 0 0 8px var(--cb-green-glow), var(--shadow) !important;
+      position: relative; overflow: hidden;
+    }
+    .member-card::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:2px;
+      background:linear-gradient(90deg,var(--cb-green),transparent);
+      border-radius:12px 12px 0 0; pointer-events:none; z-index:1;
+    }
+    .member-card:hover { border-color:var(--cb-teal) !important; box-shadow:0 0 14px var(--cb-teal-glow),var(--shadow-lg) !important; }
+    .inv-card {
+      border: 1.5px solid var(--cb-yellow) !important;
+      box-shadow: 0 0 8px var(--cb-yellow-glow), var(--shadow) !important;
+      position: relative; overflow: hidden;
+    }
+    .inv-card::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:2px;
+      background:linear-gradient(90deg,var(--cb-yellow),transparent);
+      border-radius:14px 14px 0 0; pointer-events:none; z-index:1;
+    }
+    .patrol-ring-card-v2 {
+      border: 1.5px solid var(--cb-green) !important;
+      box-shadow: 0 0 12px var(--cb-green-glow), var(--shadow) !important;
+    }
+    :root.light .stat-tile        { box-shadow:0 0 5px var(--cb-blue-glow),var(--shadow)   !important; }
+    :root.light .data-card        { box-shadow:0 0 4px var(--cb-blue-glow),var(--shadow)   !important; }
+    :root.light .audit-card       { box-shadow:0 0 4px var(--cb-purple-glow),var(--shadow) !important; }
+    :root.light .log-card         { box-shadow:0 0 4px var(--cb-teal-glow),var(--shadow)   !important; }
+    :root.light .member-card      { box-shadow:0 0 4px var(--cb-green-glow),var(--shadow)  !important; }
+    :root.light .inv-card         { box-shadow:0 0 4px var(--cb-yellow-glow),var(--shadow) !important; }
+    :root.light .patrol-ring-card-v2 { box-shadow:0 0 5px var(--cb-green-glow),var(--shadow) !important; }
+
+    /* ── Bottom nav active — hijau selaras patroli & dashboard ─── */
+    /* Garis indicator nav aktif pakai gradient hijau */
+    nav button[data-active="true"] {
+      color: #4caf82 !important;
+      background: rgba(76,175,130,.10) !important;
+    }
+
+    /* Light mode nav: warna hijau lebih gelap agar kontras */
+    :root.light nav button { color: var(--tx3); }
+
+    /* ── AreaCircle glassmorphism ───────────────────────────────── */
+    /* Hover: lingkaran naik sedikit + glow lebih terang */
+    .area-circle-btn:hover > div:first-child {
+      transform: translateY(-2px) scale(1.03);
+      filter: brightness(1.1);
+    }
+    .area-circle-btn { transition: opacity .2s; }
+
+    /* patrol-time-label override — lebih terang dari tx3 default */
+    .patrol-time-label {
+      color: #a0a0a0 !important; /* lebih terang dari tx3 (#888) */
+    }
+    :root.light .patrol-time-label {
+      color: #666 !important;
+    }
+    /* Fresh state: tetap hijau */
+    .patrol-time-fresh { color: #4caf82 !important; }
   </style>
 </head>
 <body>
@@ -529,7 +1059,7 @@ function getReguHari(date) {
 
 const POS_LIST = ["Pos Utama", "Pos Asrama", "Pos Guest House", "Gedung Utama"];
 const POS_CAP = { "Pos Utama": 2, "Pos Asrama": 1, "Pos Guest House": 1, "Gedung Utama": 1 };
-const POS_COL = { "Pos Utama": "#5b9bd5", "Pos Asrama": "#6aaa88", "Pos Guest House": "#8882b8", "Gedung Utama": "#7090a8" };
+const POS_COL = { "Pos Utama": "#5ba8ff", "Pos Asrama": "#4cdf9a", "Pos Guest House": "#b07cff", "Gedung Utama": "#38c8e8" };
 
 const PATROL_AREAS = {
   "Pos Asrama": ["Gedung Asrama 1","Gedung Asrama 2","Ruang Makan 2","Klinik","Gedung Kelas E","Gedung Kelas A","Ruang Makan 1"],
@@ -832,6 +1362,8 @@ const IC = ({n,s=18,c="currentColor"}) => ({
   pos:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>,
   menu:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
   search:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+  out:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+  key:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
 }[n] || null);
 
 // ─── QR SVG ───────────────────────────────────────────────────────────────────
@@ -1125,10 +1657,10 @@ function CamScanner({onScan,onClose,customDecode}) {
         {/* Tombol */}
         <div style={{display:"flex",gap:8}}>
           {isLive
-            ? <Btn onClick={hardStop} color="var(--tx4)" variant="outline">⏹ Stop Kamera</Btn>
+            ? <Btn onClick={hardStop} color="var(--tx3)" variant="outline">⏹ Stop Kamera</Btn>
             : <Btn onClick={start} color="var(--accent)"><IC n="cam" s={13}/> Aktifkan</Btn>
           }
-          <Btn onClick={()=>{hardStop();onClose();}} color="var(--tx4)" variant="outline">Tutup</Btn>
+          <Btn onClick={()=>{hardStop();onClose();}} color="var(--tx3)" variant="outline">Tutup</Btn>
         </div>
       </div>
       <style>{`@keyframes sl{0%,100%{transform:translateY(-80px)}50%{transform:translateY(80px)}}`}</style>
@@ -1158,7 +1690,126 @@ function ReadOnlyBanner({reguHari}) {
     </div>
   );
 }
-function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols,standJaga,mutations,posRollingLog,liburData,setLiburData,instruksi,currentUser,setTab,canEdit,isAdmin}) {
+// ─── SLIDING ALERT CAPSULE ────────────────────────────────────────────────────
+function SlidingAlertCapsule({ alerts, setTab }) {
+  const [idx, setIdx] = React.useState(0);
+  const [visible, setVisible] = React.useState(true);
+
+  React.useEffect(() => {
+    if (alerts.length <= 1) return;
+    const interval = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx(i => (i + 1) % alerts.length);
+        setVisible(true);
+      }, 300);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [alerts.length]);
+
+  if (!alerts.length) return null;
+  const cur = alerts[idx % alerts.length];
+  const isCritical = cur.col === "#e53e3e";
+  const isWarn = cur.col === "#ff9900";
+  const iconClass = isCritical ? "icon-glow-red" : isWarn ? "icon-blink-orange" : "";
+
+  return (
+    <div style={{marginBottom:14}}>
+      <div
+        onClick={() => cur.tab && setTab && setTab(cur.tab)}
+        className={"alert-capsule" + (isCritical ? " alert-critical" : "")}
+        style={{
+          background: cur.bg,
+          border: `1.5px solid ${cur.col}50`,
+          borderLeft: `4px solid ${cur.col}`,
+          borderRadius: 12,
+          padding: "11px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          cursor: cur.tab ? "pointer" : "default",
+          transition: "all .25s",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <span className={iconClass} style={{ fontSize: 20, flexShrink: 0, transition: "opacity .3s", opacity: visible ? 1 : 0 }}>{cur.icon}</span>
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: cur.col, transition: "opacity .3s, transform .3s", opacity: visible ? 1 : 0, transform: visible ? "translateX(0)" : "translateX(-10px)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {cur.msg}
+          </div>
+          {cur.tab && <div style={{ fontSize: 10, color: "var(--tx3)", marginTop: 1 }}>Tap untuk buka →</div>}
+        </div>
+        {alerts.length > 1 && (
+          <div style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
+            {alerts.map((_, i) => (
+              <div key={i} onClick={e => { e.stopPropagation(); setIdx(i); setVisible(true); }} style={{ width: i === idx % alerts.length ? 14 : 6, height: 6, borderRadius: 3, background: i === idx % alerts.length ? cur.col : cur.col + "40", transition: "all .3s", cursor: "pointer" }} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── PATROL RING — Circular Progress futuristik ────────────────────────────────
+function PatrolRing({ value, max, label, onClick }) {
+  const pct  = max > 0 ? Math.min(value / max, 1) : 0;
+  const size = 72;
+  const r    = 28;
+  const circ = 2 * Math.PI * r;          // ≈ 175.9
+  const offset = circ * (1 - pct);
+
+  const col = pct >= 0.8 ? "#4caf82"
+            : pct >= 0.5 ? "#fb923c"
+            : "#e53e3e";
+  const glow = pct >= 0.8 ? "0 0 10px rgba(76,175,130,.5)"
+             : pct >= 0.5 ? "0 0 10px rgba(245,158,11,.45)"
+             : "0 0 10px rgba(229,62,62,.5)";
+
+  return (
+    <div onClick={onClick} style={{
+      display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+      cursor: onClick ? "pointer" : "default", gap: 4,
+    }}>
+      <div style={{ position:"relative", width:size, height:size }}>
+        <svg width={size} height={size} style={{ transform:"rotate(-90deg)", filter: `drop-shadow(${glow})` }}>
+          {/* Track */}
+          <circle cx={size/2} cy={size/2} r={r}
+            fill="none" stroke="rgba(255,255,255,.07)" strokeWidth={6} />
+          {/* Arc */}
+          <circle
+            className="patrol-ring-arc"
+            cx={size/2} cy={size/2} r={r}
+            fill="none"
+            stroke={col}
+            strokeWidth={6}
+            strokeLinecap="round"
+            strokeDasharray={circ}
+            strokeDashoffset={offset}
+            style={{"--ring-full": circ, "--ring-offset": offset}}
+          />
+        </svg>
+        {/* Centre text */}
+        <div style={{
+          position:"absolute", inset:0,
+          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+        }}>
+          <div style={{ fontSize: 18, fontWeight: 900, color: col, lineHeight: 1,
+            fontVariantNumeric:"tabular-nums", letterSpacing:-0.5 }}>{value}</div>
+          <div style={{ fontSize: 8, color:"var(--tx3)", fontWeight:700, letterSpacing:.5 }}>/{max}</div>
+        </div>
+      </div>
+      <div style={{
+        fontSize: 9, fontWeight: 800, textTransform:"uppercase",
+        letterSpacing: .7, color:"var(--tx)", textAlign:"center",
+        textShadow:"0 1px 3px rgba(0,0,0,.5)",
+      }}>{label}</div>
+    </div>
+  );
+}
+
+function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols,standJaga,mutations,posRollingLog,liburData,setLiburData,instruksi,currentUser,setTab,canEdit,isAdmin,keluarData,statusPimpinan={hadir:true},setStatusPimpinan,toast}) {
   const pending=packages.filter(p=>p.status==="Belum Diambil").length;
   const staying=guests.filter(g=>g.status==="Masih Ada").length;
   const todP=patrols.filter(p=>new Date(p.ts).toDateString()===now.toDateString()).length;
@@ -1195,54 +1846,219 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
     ...(noMutasi     ? [{icon:"📋", msg:"Belum ada laporan serah terima shift hari ini", col:"var(--tx2)", bg:"var(--card)", tab:"mutation"}] : []),
   ];
 
+  // ── Kepatuhan patroli: target 1 per jam dalam shift 12 jam = 12 ideal ──
+  const PATROL_TARGET = 12;
+
+  // Peserta keluar (sedang di luar)
+  const keluarDiLuar2 = typeof keluarData !== "undefined" ? (keluarData||[]).filter(k=>!k.kembali).length : 0;
+
+  // ── Kartu stat dengan ikon unik & metadata glow ──
   const cards=[
-    {l:"Paket Menunggu",v:pending,col:"#ff9900",bg:"rgba(255,153,0,.07)",icon:"pkg",t:"package"},
-    {l:"Tamu Menginap",v:staying,col:"#8b8bff",bg:"rgba(139,139,255,.08)",icon:"ppl",t:"guest"},
-    {l:"Patroli Hari Ini",v:todP,col:"var(--ok)",bg:"var(--green-card)",icon:"qr",t: isAdmin ? null : "patrol"},
-    {l:"Insiden Aktif",v:actI,col:"#e53e3e",bg:"rgba(229,62,62,.09)",icon:"alert",t:"incident"},
+    {
+      l:"Paket Menunggu", v:pending,
+      col:"#ff9900", icon:"pkg", t:"package",
+      glowClass: pending > 0 ? "card-glow-warn" : "",
+      emoji:"📦",
+    },
+    {
+      l:"Tamu Menginap", v:staying,
+      col:"#a78bfa", icon:"ppl", t:"guest",
+      glowClass: staying > 0 ? "card-glow-purple" : "",
+      emoji:"🏨",
+    },
+    {
+      l:"Peserta Keluar", v:keluarDiLuar2,
+      col:"#38c8e8", icon:"ppl", t:"keluar",
+      glowClass: keluarDiLuar2 > 0 ? "card-glow-teal" : "",
+      emoji:"🚶",
+    },
   ];
+  const staggerClass = ["card-stagger-1","card-stagger-2","card-stagger-3","card-stagger-4"];
   return (
     <div>
-      {/* Hero card anggota: Status Operasional simpel */}
+      {/* ═══════════════════════════════════════════════════
+           HERO CARD ANGGOTA — Smart Hero v2
+           Priority: instruksi aktif → override seluruh hero
+           Fallback: status pimpinan + stat counters
+      ═══════════════════════════════════════════════════ */}
       {!isAdmin && (()=>{
         const myPos = POS_LIST.find(p=>(posAssign[p]||[]).includes(currentUser?.name));
-        const statusColor = actI > 0 ? "#ff4444" : posKosong ? "#ffd700" : "var(--accent-light)";
-        const statusText  = actI > 0 ? "ADA INSIDEN AKTIF" : posKosong ? "POS BELUM TERISI" : "KONDISI NORMAL";
         const posKosongCount = POS_LIST.filter(p=>!(posAssign[p]?.length>0)).length;
+
+        // ── Urgency level ──
+        const isCritical = actI > 0 || posKosong;
+        const urgencyColor = actI > 0 ? "#e53e3e" : posKosong ? "#fb923c" : "var(--accent-light)";
+        const urgencyText  = actI > 0 ? "ADA INSIDEN AKTIF" : posKosong ? "POS BELUM TERISI" : "KONDISI NORMAL";
+        const urgencyIcon  = actI > 0 ? "🚨" : posKosong ? "⚠️" : "✅";
+
+        // ── Background hero: merah-kritis jika ada insiden/pos kosong ──
+        const heroBg = actI > 0
+          ? "linear-gradient(135deg,#1a0a0a,#220d0d)"
+          : posKosong
+          ? "linear-gradient(135deg,#1a1200,#1e1500)"
+          : "var(--status-card-bg)";
+        const heroBorder = actI > 0
+          ? "2px solid rgba(229,62,62,.55)"
+          : posKosong
+          ? "2px solid rgba(245,158,11,.45)"
+          : "2px solid rgba(91,155,213,.20)";
+        const heroGlow = actI > 0
+          ? "0 0 28px rgba(229,62,62,.18), 0 2px 8px rgba(0,0,0,.6)"
+          : posKosong
+          ? "0 0 22px rgba(245,158,11,.14), 0 2px 8px rgba(0,0,0,.6)"
+          : "none";
+
+        // ── Instruksi aktif untuk regu ini ──
+        const myRegu = currentUser?.regu;
+        const instruksiAktif = (instruksi||[]).filter(i =>
+          i.aktif && (i.targetRegu==="Semua" || String(i.targetRegu)===String(myRegu))
+        );
+        const hasInstruksi = instruksiAktif.length > 0;
+        const topInstruksi = instruksiAktif[0]; // yang terpenting
+
+        // ── Pimpinan status ──
+        const pimpinanHadir = statusPimpinan?.hadir !== false;
+        const pimpinanColor = pimpinanHadir ? "#4caf82" : "#e53e3e";
+        const pimpinanText  = pimpinanHadir ? "Pimpinan Sedang Di Tempat / Kantor" : "Pimpinan Sedang Keluar";
+        const pimpinanIcon  = pimpinanHadir ? "🟢" : "🔴";
+
         return (
-          <div style={{background:"var(--status-card-bg)",border:`2px solid ${statusColor}55`,borderRadius:14,padding:"16px",marginBottom:14,position:"relative",overflow:"hidden"}}>
-            <div style={{position:"absolute",top:-30,right:-30,width:100,height:100,background:statusColor,borderRadius:"50%",opacity:.06,pointerEvents:"none"}}/>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div>
-                <div style={{fontSize:9.5,letterSpacing:2.5,color:"var(--tx2)",fontWeight:700,marginBottom:3,textTransform:"uppercase"}}>Status Operasional</div>
-                <div style={{fontSize:15,fontWeight:900,color:statusColor,letterSpacing:1}}>{statusText}</div>
-              </div>
-              <div style={{width:44,height:44,borderRadius:"50%",background:statusColor+"18",border:`2px solid ${statusColor}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>
-                {actI > 0 ? "🚨" : posKosong ? "⚠️" : "✅"}
-              </div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-              {[
-                {label:"Insiden Aktif", val: actI, col: actI>0?"#e53e3e":"var(--accent-light)", icon:"⚠️", tab:"incident"},
-                {label:"Paket Tunggu",  val: pending, col: pending>0?"#ff9900":"var(--accent-light)", icon:"📦", tab:"package"},
-                {label:"Pos Kosong",   val: posKosongCount, col: posKosong?"#e53e3e":"var(--accent-light)", icon:"🏠", tab:"pos"},
-              ].map(item=>(
-                <div key={item.label} onClick={()=>setTab(item.tab)} style={{background:"var(--stat-inner)",border:`1px solid ${item.col}30`,borderRadius:10,padding:"10px 6px",textAlign:"center",cursor:"pointer", className: item.val > 0 && item.label==="Pos Kosong" ? "pos-empty-card" : ""}}>
-                  <div className="stat-number" style={{color:item.col,fontSize:28}}>{item.val}</div>
-                  <div style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:.6,color:"var(--tx2)",marginTop:4}}>{item.label}</div>
+          <div className="hero-hud-scanline" style={{
+            background: heroBg,
+            border: heroBorder,
+            borderRadius: 14,
+            padding: "16px",
+            marginBottom: 14,
+            position: "relative",
+            overflow: "hidden",
+            boxShadow: heroGlow,
+            transition: "background .4s ease, border .4s ease, box-shadow .4s ease",
+          }}>
+            {/* Ambient glow blob */}
+            <div style={{position:"absolute",top:-40,right:-40,width:120,height:120,background:urgencyColor,borderRadius:"50%",opacity:.06,pointerEvents:"none",transition:"background .4s"}}/>
+
+            {/* ── MODE A: INSTRUKSI OVERRIDE ── */}
+            {hasInstruksi ? (
+              <div style={{animation:"heroContentIn .3s cubic-bezier(.22,1,.36,1) both"}}>
+                {/* Header instruksi */}
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                  <div style={{
+                    width:36,height:36,borderRadius:9,
+                    background:"linear-gradient(135deg,#dc2626,#ef4444)",
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:18,flexShrink:0,
+                    boxShadow:"0 2px 10px rgba(220,38,38,.45)",
+                  }}>🚨</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:8.5,letterSpacing:2.5,color:"#ef4444",fontWeight:800,textTransform:"uppercase"}}>
+                      Instruksi Pimpinan Aktif
+                    </div>
+                    <div style={{fontSize:9.5,color:"var(--tx3)",marginTop:1}}>
+                      {instruksiAktif.length} instruksi · {topInstruksi.targetRegu==="Semua"?"Semua Regu":`Regu ${topInstruksi.targetRegu}`}
+                    </div>
+                  </div>
+                  <button onClick={()=>setTab("instruksi")} className="shimmer-btn" style={{
+                    background:"rgba(220,38,38,.15)",border:"1px solid rgba(220,38,38,.35)",
+                    borderRadius:8,padding:"4px 10px",fontSize:10,color:"#ef4444",fontWeight:800,
+                    cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",transition:"all .18s",
+                  }}>Buka →</button>
                 </div>
-              ))}
-            </div>
-            {myPos && (
-              <div style={{marginTop:10,padding:"7px 10px",background:"var(--green-card)",borderRadius:8,border:"1px solid var(--dark-border2)",display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:13}}>📍</span>
-                <span style={{fontSize:11.5,color:"var(--accent-light)",fontWeight:700}}>Pos kamu: {myPos}</span>
+
+                {/* Instruksi utama */}
+                <div style={{
+                  background:"rgba(220,38,38,.08)",
+                  border:"1px solid rgba(220,38,38,.25)",
+                  borderLeft:"4px solid #dc2626",
+                  borderRadius:10,
+                  padding:"11px 14px",
+                  marginBottom: instruksiAktif.length > 1 ? 8 : 0,
+                }}>
+                  <div style={{
+                    fontSize:13.5,fontWeight:900,color:"#fff",lineHeight:1.45,
+                    letterSpacing:.2,
+                    transition:"opacity .3s",
+                  }}>{topInstruksi.judul}</div>
+                  <div style={{fontSize:11.5,color:"rgba(255,255,255,.75)",marginTop:5,lineHeight:1.55}}>
+                    {topInstruksi.isi.slice(0,140)}{topInstruksi.isi.length>140?"…":""}
+                  </div>
+                  <div style={{fontSize:9.5,color:"rgba(255,255,255,.4)",marginTop:6}}>
+                    {["🚨 Penting","📋 Normal","ℹ️ Info"][["Penting","Normal","Info"].indexOf(topInstruksi.prioritas)]||"📋"} · {fmtDT(topInstruksi.ts)}
+                  </div>
+                </div>
+
+                {/* Sisa instruksi jika > 1 */}
+                {instruksiAktif.length > 1 && (
+                  <div style={{
+                    background:"var(--stat-inner)",borderRadius:8,padding:"7px 12px",
+                    display:"flex",justifyContent:"space-between",alignItems:"center",
+                    cursor:"pointer",border:"1px solid var(--border)",
+                  }} onClick={()=>setTab("instruksi")}>
+                    <span style={{fontSize:11,color:"var(--tx3)",fontWeight:600}}>
+                      +{instruksiAktif.length-1} instruksi lainnya
+                    </span>
+                    <span style={{fontSize:10.5,color:"var(--accent-light)"}}>Lihat semua →</span>
+                  </div>
+                )}
+              </div>
+
+            ) : (
+              /* ── MODE B: STATUS NORMAL — Pimpinan + Stats ── */
+              <div style={{animation:"heroContentIn .3s cubic-bezier(.22,1,.36,1) both"}}>
+                {/* BARIS ATAS: Status Operasional saja */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,gap:10}}>
+                  {/* Status Operasional */}
+                  <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
+                    <div style={{
+                      width:40,height:40,borderRadius:"50%",
+                      background:urgencyColor+"18",
+                      border:`2px solid ${urgencyColor}44`,
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      fontSize:20,flexShrink:0,
+                      transition:"background .4s,border .4s",
+                    }}>
+                      {urgencyIcon}
+                    </div>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:9,letterSpacing:2,color:"var(--tx3)",fontWeight:700,textTransform:"uppercase"}}>Status Operasional</div>
+                      <div style={{
+                        fontSize:13,fontWeight:900,color:urgencyColor,letterSpacing:.5,lineHeight:1.2,
+                        transition:"color .35s ease",
+                      }}>{urgencyText}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stat counters: Insiden + Pos Kosong saja */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  {[
+                    {label:"Insiden Aktif", val: actI, col: actI>0?"#e53e3e":"var(--accent-light)", tab:"incident"},
+                    {label:"Pos Kosong",    val: posKosongCount, col: posKosong?"#fb923c":"var(--accent-light)", tab:"pos"},
+                  ].map(item=>(
+                    <div key={item.label} onClick={()=>setTab(item.tab)} className="hud-card" style={{
+                      background:"var(--stat-inner)",
+                      border:`1px solid ${item.col}35`,
+                      borderRadius:10,padding:"10px 6px",textAlign:"center",cursor:"pointer",
+                      transition:"border .3s ease",
+                    }}>
+                      <div className={`stat-number${item.label==="Insiden Aktif"&&item.val>0?" stat-critical":""}`} style={{color:item.col,fontSize:28,transition:"color .3s"}}>{item.val}</div>
+                      <div style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:.6,color:"var(--tx2)",marginTop:4}}>{item.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Pos anggota */}
+                {myPos && (
+                  <div style={{marginTop:10,padding:"7px 10px",background:"var(--green-card)",borderRadius:8,border:"1px solid var(--dark-border2)",display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontSize:13}}>📍</span>
+                    <span style={{fontSize:11.5,color:"var(--accent-light)",fontWeight:700}}>Pos kamu: {myPos}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
         );
       })()}
-      {/* Hero card admin: Regu + Status Pos */}
+      {/* Hero card admin: Regu + Status Pos (tanpa status pimpinan) */}
       {isAdmin && (
       <div style={{background:"var(--admin-card-bg)",border:`1.5px solid ${posKosong?"#ff3333":"var(--border)"}`,borderRadius:12,padding:"14px 16px",marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
@@ -1268,25 +2084,10 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
       </div>
       )}
 
-      {/* Alert notifikasi */}
-      {alerts.length > 0 && (
-        <div style={{marginBottom:14}}>
-          {alerts.map((a,i)=>{
-            const isCritical = a.col==="#e53e3e";
-            const isWarn = a.col==="#ff9900";
-            const iconClass = isCritical ? "icon-glow-red" : isWarn ? "icon-blink-orange" : "";
-            return (
-            <div key={i} onClick={()=>a.tab&&setTab(a.tab)} className={isCritical?"alert-critical":""} style={{background:a.bg,border:`1.5px solid ${a.col}40`,borderLeft:`3px solid ${a.col}`,borderRadius:10,padding:"10px 14px",marginBottom:7,display:"flex",alignItems:"center",gap:10,cursor:a.tab?"pointer":"default"}}>
-              <span className={iconClass} style={{fontSize:18,flexShrink:0}}>{a.icon}</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:12.5,fontWeight:800,color:a.col}}>{a.msg}</div>
-                {a.tab&&<div style={{fontSize:10.5,color:"var(--tx2)"}}>Tap untuk buka →</div>}
-              </div>
-            </div>
-            );
-          })}
-        </div>
-      )}
+      {/* Alert notifikasi — 1 kapsul slide */}
+      <div style={{minHeight: 58}}>
+        {alerts.length > 0 && <SlidingAlertCapsule alerts={alerts} setTab={setTab} />}
+      </div>
       {/* Libur tambahan hari ini — tap untuk setting */}
       {(()=>{
         const todayKey = now.toISOString().slice(0,10);
@@ -1305,58 +2106,81 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
         );
       })()}
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-        {cards.map(c=>{
-          const isCritical = c.t==="incident" && c.v > 0;
-          const isWarn = (c.t==="package"||c.t==="guest") && c.v > 0;
-          return (
-          <div key={c.l} onClick={()=>c.t&&setTab(c.t)} style={{background:"var(--card-solid)",border:`1.5px solid ${c.col}30`,borderRadius:12,padding:"14px 16px",cursor:c.t?"pointer":"default",position:"relative",overflow:"hidden"}}>
-            <div style={{position:"absolute",top:0,right:0,width:60,height:60,background:c.col,opacity:.05,borderRadius:"0 12px 0 60px",pointerEvents:"none"}}/>
-            <span className={isCritical?"icon-glow-red":isWarn?"icon-glow-orange":""}><IC n={c.icon} s={14} c={c.col}/></span>
-            <div className={`stat-number${isCritical?" stat-critical":""}`} style={{color:c.col,marginTop:8}}>{c.v}</div>
-            <div className="stat-label">{c.l}</div>
+      {/* ── Kartu Statistik — staggered entrance + glow + ikon unik ── */}
+      {/* Layout: 2x2 grid dengan lingkaran HADIR PIMPINAN floating di tengah */}
+      <div style={{position:"relative",marginBottom:14}}>
+        {/* Grid 2x2 */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          {cards.map((c,i)=>{
+            // Per-card gradient configs
+            const cardGradients = [
+              {bg:"linear-gradient(145deg,#1a1200,#1f1700)",stripe:"linear-gradient(90deg,#ff9900,#ffcc44)",glow:"#ff9900"},
+              {bg:"linear-gradient(145deg,#100e1f,#16132a)",stripe:"linear-gradient(90deg,#a78bfa,#c4b5fd)",glow:"#a78bfa"},
+              {bg:"linear-gradient(145deg,#061618,#0a1e20)",stripe:"linear-gradient(90deg,#38c8e8,#7de8f8)",glow:"#38c8e8"},
+            ];
+            const cg = cardGradients[i] || cardGradients[0];
+            return (
+            <div key={c.l}
+              className={`${staggerClass[i]} ${c.glowClass} hud-card stat-card-v2`}
+              onClick={()=>c.t&&setTab(c.t)}
+              style={{
+                background: cg.bg,
+                border:`1.5px solid ${c.col}38`,
+                borderRadius:16,
+                padding:"14px 16px",
+                cursor:c.t?"pointer":"default",
+                position:"relative",
+                overflow:"hidden",
+                boxShadow:`0 4px 18px ${c.col}18, 0 1px 4px rgba(0,0,0,.5)`,
+                transition:"border .25s, box-shadow .25s",
+                /* Tambah ruang bawah di baris pertama agar ada jarak cukup untuk lingkaran tengah */
+                ...(i < 2 ? {paddingBottom:22} : {}),
+              }}>
+              {/* Top color stripe */}
+              <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:cg.stripe,borderRadius:"16px 16px 0 0",opacity:.9}} />
+              {/* Glow blob */}
+              <div className="stat-card-v2-inner-glow" style={{background:cg.glow}} />
+              {/* Emoji bg */}
+              <div style={{position:"absolute",top:10,right:12,fontSize:24,opacity:.14,lineHeight:1}}>{c.emoji}</div>
+              {/* Icon + number */}
+              <IC n={c.icon} s={14} c={c.col}/>
+              <div className="stat-number" style={{color:c.col,marginTop:8,textShadow:`0 0 16px ${c.col}99`}}>{c.v}</div>
+              <div className="stat-label" style={{marginTop:5,fontSize:9,letterSpacing:.9}}>{c.l}</div>
+            </div>
+            );
+          })}
+
+          {/* PatrolRing — slot ke-4 (kanan bawah) */}
+          <div
+            className={`${staggerClass[3]} patrol-ring-card-v2`}
+            onClick={()=>!isAdmin&&setTab("patrol")}
+            style={{
+              background:"linear-gradient(145deg,#081510,#0d1e17)",
+              border:`1.5px solid rgba(76,175,130,.32)`,
+              borderRadius:16,
+              padding:"12px 8px",
+              paddingTop:22,
+              cursor:!isAdmin?"pointer":"default",
+              display:"flex",
+              alignItems:"center",
+              justifyContent:"center",
+              position:"relative",
+              overflow:"hidden",
+              boxShadow:"0 4px 18px rgba(76,175,130,.14), 0 1px 4px rgba(0,0,0,.5)",
+            }}>
+            {/* Top green stripe */}
+            <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg,#4caf82,#80e0b0)",borderRadius:"16px 16px 0 0",opacity:.85}} />
+            <div style={{position:"absolute",top:0,right:0,width:64,height:64,background:"#4caf82",opacity:.05,borderRadius:"0 16px 0 64px",pointerEvents:"none"}}/>
+            <div style={{position:"absolute",top:10,right:12,fontSize:22,opacity:.14,lineHeight:1}}>🛡️</div>
+            <PatrolRing value={todP} max={PATROL_TARGET} label="Patroli Hari Ini" />
           </div>
-          );
-        })}
+        </div>
+
+
       </div>
       {/* Aksi Cepat — digantikan oleh FAB */}
 
-      {/* Widget Instruksi di Dashboard */}
-      {(()=>{
-        const PRI_COL2 = {Penting:"#dc2626", Normal:"var(--accent)", Info:"var(--ok)"};
-        const PRI_BG2  = {Penting:"rgba(220,38,38,.08)", Normal:"var(--green-card)", Info:"var(--green-card)"};
-        const myRegu = currentUser?.regu;
-        const visibel = (instruksi||[]).filter(i=>i.aktif && (i.targetRegu==="Semua"||String(i.targetRegu)===String(myRegu)));
-        if(visibel.length===0) return null;
-        return (
-          <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden",marginBottom:4}}>
-            <div style={{background:"linear-gradient(90deg,#dc2626,#ef4444)",padding:"8px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{fontSize:12,fontWeight:800,color:"#fff"}}>🚨 Instruksi Pimpinan ({visibel.length})</div>
-              <button onClick={()=>setTab("instruksi")} style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:6,padding:"3px 9px",fontSize:10.5,color:"#fff",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Lihat Semua →</button>
-            </div>
-            {visibel.slice(0,3).map(ins=>(
-              <div key={ins.id} style={{padding:"10px 14px",borderBottom:"1px solid var(--border)",borderLeft:`3px solid ${PRI_COL2[ins.prioritas]||"var(--accent)"}`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:6}}>
-                  <div style={{flex:1}}>
-                    <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:3,flexWrap:"wrap"}}>
-                      <span style={{fontSize:10,fontWeight:800,color:PRI_COL2[ins.prioritas]||"var(--accent)",background:PRI_BG2[ins.prioritas]||"var(--green-card)",borderRadius:4,padding:"1px 6px"}}>{ins.prioritas==="Penting"?"🚨":ins.prioritas==="Info"?"ℹ️":"📋"} {ins.prioritas}</span>
-                      <span style={{fontSize:10,color:"var(--tx3)"}}>{fmtDT(ins.ts)}</span>
-                    </div>
-                    <div style={{fontSize:13,fontWeight:800,color:"var(--tx2)"}}>{ins.judul}</div>
-                    <div style={{fontSize:11.5,color:"var(--tx)",marginTop:2,lineHeight:1.5}}>{ins.isi.slice(0,120)}{ins.isi.length>120?"…":""}</div>
-                  </div>
-                  {ins.selesai?(
-                    <span style={{flexShrink:0,background:"var(--green-card)",border:"1px solid #86efac",borderRadius:6,padding:"3px 8px",fontSize:10,color:"var(--ok)",fontWeight:700}}>✓ Selesai</span>
-                  ):(
-                    <span style={{flexShrink:0,background:"rgba(255,50,50,.1)",border:"1px solid #fca5a5",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#dc2626",fontWeight:700}}>⏳ Aktif</span>
-                  )}
-                </div>
-              </div>
-            ))}
-            {visibel.length>3&&<div style={{padding:"8px 14px",fontSize:11,color:"var(--tx3)",textAlign:"center"}}>+{visibel.length-3} instruksi lainnya</div>}
-          </div>
-        );
-      })()}
+      {/* Instruksi aktif ditampilkan di Hero Section (mode override) */}
     </div>
   );
 }
@@ -1403,7 +2227,7 @@ function JadwalTab({now,liburData,isAdmin,setTab}) {
                   {isT&&<span style={{marginLeft:5,fontSize:9,background:RC[r],color:"#fff",borderRadius:4,padding:"1px 5px"}}>HARI INI</span>}
                   {libur&&<span style={{marginLeft:5,fontSize:9,background:"var(--y)",color:"#1a1a1a",borderRadius:4,padding:"1px 5px"}}>LIBUR</span>}
                 </div>
-                <div style={{fontSize:10,color:libur?"var(--tx3)":"var(--tx4)"}}>{d.toLocaleDateString("id-ID",{weekday:"long"})}</div>
+                <div style={{fontSize:10,color:libur?"var(--tx3)":"var(--tx3)"}}>{d.toLocaleDateString("id-ID",{weekday:"long"})}</div>
                 {liburTambahan.length>0&&<div style={{fontSize:9,color:"#ffcc00",marginTop:1}}>🏖 Libur: {liburTambahan.join(", ")}</div>}
               </div>
               <Bdg text={`Regu ${r}`} color={libur?"#ffcc00":RC[r]}/>
@@ -1510,7 +2334,7 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
       {/* Tab Mode */}
       {canEdit&&<div style={{display:"flex",gap:0,marginBottom:14,background:"var(--card-solid)",borderRadius:10,padding:3}}>
         {[["assign","📍 Penempatan"],["rolling","🔄 Rolling Pos"]].map(([v,l])=>(
-          <button key={v} onClick={()=>setMode(v)} style={{flex:1,padding:"8px 0",fontSize:12.5,fontWeight:700,borderRadius:8,border:"none",cursor:"pointer",background:mode===v?"var(--card-solid)":"transparent",color:mode===v?"var(--accent)":"var(--tx4)",boxShadow:mode===v?"0 1px 6px rgba(0,0,0,.08)":"none",fontFamily:"inherit",transition:"all .15s"}}>
+          <button key={v} onClick={()=>setMode(v)} style={{flex:1,padding:"8px 0",fontSize:12.5,fontWeight:700,borderRadius:8,border:"none",cursor:"pointer",background:mode===v?"var(--card-solid)":"transparent",color:mode===v?"var(--accent)":"var(--tx3)",boxShadow:mode===v?"0 1px 6px rgba(0,0,0,.08)":"none",fontFamily:"inherit",transition:"all .15s"}}>
             {l}
           </button>
         ))}
@@ -1589,7 +2413,7 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
             </Inp>
             <div style={{display:"flex",gap:8,marginTop:4}}>
               <Btn onClick={doRolling} color="var(--accent)" size="lg" full><IC n="rot" s={14}/> Konfirmasi Rolling</Btn>
-              {isAdmin&&<Btn onClick={()=>setScanOpen(true)} color="var(--tx4)" variant="outline">Scan QR</Btn>}
+              {isAdmin&&<Btn onClick={()=>setScanOpen(true)} color="var(--tx3)" variant="outline">Scan QR</Btn>}
             </div>
           </div>
 
@@ -1645,7 +2469,7 @@ function PosTab({reguHari,posAssign,setPosAssign,posRollingLog,setPosRollingLog,
                 </div>
               </div>
             )}
-            <div style={{display:"flex",gap:8}}><Btn onClick={doAssign} color={POS_COL[confirm.pos]} size="lg" full><IC n="ok" s={14}/> Tempatkan</Btn><Btn onClick={()=>setConfirm(null)} color="var(--tx4)" variant="outline">Batal</Btn></div>
+            <div style={{display:"flex",gap:8}}><Btn onClick={doAssign} color={POS_COL[confirm.pos]} size="lg" full><IC n="ok" s={14}/> Tempatkan</Btn><Btn onClick={()=>setConfirm(null)} color="var(--tx3)" variant="outline">Batal</Btn></div>
           </div>
         )}
       </Modal>
@@ -1722,7 +2546,7 @@ function StandTab({standJaga,setStandJaga,posAssign,reguHari,toast,canEdit,curre
               </div>
             )}
             <Inp label="Catatan (opsional)" value={notes} onChange={e=>setNotes(e.target.value)} as="textarea" placeholder="Kondisi pos..."/>
-            <div style={{display:"flex",gap:8}}><Btn onClick={doConfirm} color="var(--ok)" size="lg" full><IC n="ok" s={14}/> Konfirmasi</Btn><Btn onClick={()=>setConfirm(null)} color="var(--tx4)" variant="outline">Batal</Btn></div>
+            <div style={{display:"flex",gap:8}}><Btn onClick={doConfirm} color="var(--ok)" size="lg" full><IC n="ok" s={14}/> Konfirmasi</Btn><Btn onClick={()=>setConfirm(null)} color="var(--tx3)" variant="outline">Batal</Btn></div>
           </div>
         )}
       </Modal>
@@ -1737,13 +2561,15 @@ const CHECKLIST_ICON  = {"Jendela":"🪟","Pintu":"🚪","Lampu":"💡","Barang 
 
 // Warna per pos
 const POS_RING = {
-  "Pos Asrama":    {ring:"#6aaa88",fill:"rgba(106,170,136,.10)",txt:"#6aaa88",txtLight:"#2a7050"},
-  "Gedung Utama":  {ring:"#7090a8",fill:"rgba(112,144,168,.10)",txt:"#7090a8",txtLight:"#2a5070"},
-  "Pos Utama":     {ring:"#5b9bd5",fill:"rgba(91,155,213,.10)", txt:"#5b9bd5",txtLight:"#1a5090"},
-  "Pos Guest House":{ring:"#8882b8",fill:"rgba(136,130,184,.10)",txt:"#8882b8",txtLight:"#4a4488"},
+  "Pos Asrama":    {ring:"#4cdf9a",fill:"rgba(76,223,154,.14)",txt:"#4cdf9a",txtLight:"#1a8050"},
+  "Gedung Utama":  {ring:"#38c8e8",fill:"rgba(56,200,232,.14)",txt:"#38c8e8",txtLight:"#0a6888"},
+  "Pos Utama":     {ring:"#5ba8ff",fill:"rgba(91,168,255,.14)",txt:"#5ba8ff",txtLight:"#0050cc"},
+  "Pos Guest House":{ring:"#b07cff",fill:"rgba(176,124,255,.14)",txt:"#b07cff",txtLight:"#6a3ab8"},
 };
 
 function AreaCircle({area,pos,last,onTap,canEdit}) {
+  // Warna hijau selaras persis dengan PatrolRing di dashboard: #4caf82
+  const PATROL_GREEN = "#4caf82";
   const col = POS_RING[pos] || {ring:"var(--accent)",fill:"var(--pill-active)",txt:"var(--accent-light)",txtLight:"var(--accent-dim)"};
   const minsAgo = last ? Math.floor((Date.now()-last.ts)/60000) : null;
   const fresh   = minsAgo !== null && minsAgo < 60;
@@ -1753,47 +2579,98 @@ function AreaCircle({area,pos,last,onTap,canEdit}) {
   const line2 = words.slice(2).join(" ");
   // Detect light mode
   const isLight = typeof document !== "undefined" && document.documentElement.classList.contains("light");
-  const txtColor = fresh ? "var(--ok)" : (isLight ? col.txtLight : col.txt);
-  const posClass = pos==="Pos Asrama"?"asrama":pos==="Gedung Utama"?"gedutama":pos==="Pos Utama"?"posutama":pos==="Pos Guest House"?"guesthouse":"";
+
+  // ── Warna teks: fresh = hijau dashboard, belum = teks terang (bukan abu gelap) ──
+  const txtColor   = fresh ? PATROL_GREEN : (isLight ? col.txtLight : col.txt);
+  const labelColor = fresh ? PATROL_GREEN : (isLight ? "#555" : "#b0b0b0"); // lebih terang dari tx3
+
+  // ── Glassmorphism: shadow berlapis untuk depth ──
+  const glassOuter = fresh
+    ? `0 0 0 3px ${PATROL_GREEN}30, 0 0 16px ${PATROL_GREEN}40, 0 4px 12px rgba(0,0,0,.55)`
+    : `0 0 0 2px ${col.ring}55, 0 0 12px ${col.ring}30, 0 4px 14px rgba(0,0,0,.50), inset 0 1px 0 rgba(255,255,255,.10)`;
+
   return (
     <button
       onClick={()=>canEdit&&onTap(area)}
       disabled={!canEdit}
       style={{
         background:"none",border:"none",cursor:canEdit?"pointer":"default",
-        display:"flex",flexDirection:"column",alignItems:"center",gap:6,
-        padding:4, opacity:canEdit?1:.6,
+        display:"flex",flexDirection:"column",alignItems:"center",gap:5,
+        padding:4, opacity:canEdit?1:.5,
+        transition:"opacity .2s",
       }}
     >
-      {/* Outer ring */}
+      {/* ── Outer ring — glassmorphism ── */}
       <div style={{
-        width:84,height:84,borderRadius:"50%",
-        border:`3px solid ${fresh?"var(--ok)":col.ring}`,
-        background:fresh?"rgba(74,222,128,.1)":col.fill,
+        width:82,height:82,borderRadius:"50%",
+        border:`2.5px solid ${fresh ? PATROL_GREEN : col.ring}`,
+        background: fresh
+          ? `radial-gradient(circle at 35% 35%, rgba(76,175,130,.18), rgba(76,175,130,.07))`
+          : `radial-gradient(circle at 35% 35%, ${col.fill.replace('.10','.16')}, ${col.fill.replace('.10','.06')})`,
         display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
         position:"relative",
-        boxShadow: fresh?`0 0 0 4px rgba(74,222,128,.18)`:canEdit?`0 0 0 2px ${col.ring}22`:"none",
-        transition:"all .2s",
+        boxShadow: glassOuter,
+        backdropFilter:"blur(4px)",
+        transition:"all .25s cubic-bezier(.22,1,.36,1)",
       }}>
+        {/* Specular highlight — glassmorphism top shimmer */}
+        <div style={{
+          position:"absolute",top:4,left:10,right:10,height:"30%",
+          background:`linear-gradient(180deg, rgba(255,255,255,${fresh?.14:.09}), transparent)`,
+          borderRadius:"50%",pointerEvents:"none",
+        }}/>
+
         {/* Inner ring */}
         <div style={{
-          width:62,height:62,borderRadius:"50%",
-          border:`1.5px solid ${fresh?"rgba(74,222,128,.5)":col.ring+"55"}`,
+          width:60,height:60,borderRadius:"50%",
+          border:`1.5px solid ${fresh ? `${PATROL_GREEN}70` : col.ring+"80"}`,
+          background: fresh
+            ? "rgba(76,175,130,.05)"
+            : "rgba(0,0,0,.15)",
           display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
           padding:4,
+          backdropFilter:"blur(2px)",
         }}>
-          <div className={`patrol-circle-txt-${posClass}`} style={{fontSize:9.5,fontWeight:800,color:txtColor,textAlign:"center",lineHeight:1.25,wordBreak:"break-word"}}>
+          {/* Teks nama area — font weight selaras dashboard */}
+          <div style={{
+            fontSize:9.5,fontWeight:800,color:txtColor,
+            textAlign:"center",lineHeight:1.25,wordBreak:"break-word",
+            textShadow: fresh
+              ? `0 0 8px ${PATROL_GREEN}88`
+              : `0 1px 4px rgba(0,0,0,.7)`,
+            fontFamily:"'Plus Jakarta Sans',sans-serif",
+          }}>
             {line1}
           </div>
-          {line2&&<div className={`patrol-circle-txt-${posClass}`} style={{fontSize:8.5,fontWeight:700,color:txtColor,textAlign:"center",lineHeight:1.2,opacity:.85}}>
+          {line2&&<div style={{
+            fontSize:8.5,fontWeight:700,color:txtColor,
+            textAlign:"center",lineHeight:1.2,
+            opacity:.9,
+            textShadow:`0 1px 3px rgba(0,0,0,.6)`,
+          }}>
             {line2}
           </div>}
         </div>
-        {/* Fresh badge */}
-        {fresh&&<div style={{position:"absolute",top:-4,right:-4,width:18,height:18,borderRadius:"50%",background:"var(--ok)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>✓</div>}
+
+        {/* Fresh badge ✓ */}
+        {fresh&&<div style={{
+          position:"absolute",top:-3,right:-3,
+          width:18,height:18,borderRadius:"50%",
+          background:`linear-gradient(135deg,${PATROL_GREEN},#80e0b0)`,
+          display:"flex",alignItems:"center",justifyContent:"center",
+          fontSize:10,fontWeight:900,color:"#fff",
+          boxShadow:`0 0 8px ${PATROL_GREEN}88, 0 2px 4px rgba(0,0,0,.4)`,
+        }}>✓</div>}
       </div>
-      {/* Time label */}
-      <div className="patrol-time-label" style={{fontSize:9,color:fresh?"var(--ok)":"var(--tx3)",fontWeight:700,textAlign:"center"}}>
+
+      {/* ── Time label — lebih terang & terbaca ── */}
+      <div className={`patrol-time-label${fresh?" patrol-time-fresh":""}`} style={{
+        fontSize:9,fontWeight:700,
+        textAlign:"center",
+        letterSpacing:.3,
+        textShadow: isLight ? "none" : "0 1px 3px rgba(0,0,0,.5)",
+        transition:"color .2s",
+      }}>
         {minsAgo===null?"Belum":minsAgo<60?`${minsAgo}m lalu`:minsAgo<1440?`${Math.floor(minsAgo/60)}j lalu`:"Kemarin"}
       </div>
     </button>
@@ -1861,22 +2738,125 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
       <PH title="Patroli" sub="Tap gedung untuk mencatat patroli"/>
       {!canEdit&&<ReadOnlyBanner reguHari={getReguHari(new Date())}/>}
 
-      {/* Grid lingkaran per pos */}
-      {Object.entries(PATROL_AREAS).map(([pos,areas])=>{
-        const col = POS_RING[pos]||{ring:"var(--accent)"};
+      {/* Grid lingkaran per pos — card bergaya dashboard */}
+      {Object.entries(PATROL_AREAS).map(([pos,areas],posIdx)=>{
+        const col = POS_RING[pos]||{ring:"var(--accent)",fill:"var(--pill-active)"};
+        const PATROL_GREEN = "#4caf82"; // sama persis dengan PatrolRing di dashboard
+        const freshCount = areas.filter(a=>{ const l=patrols.filter(p=>p.areas?.includes(a)).at(-1); return l&&Date.now()-l.ts<3600000; }).length;
+        const allFresh = freshCount === areas.length;
+        const noneFresh = freshCount === 0;
+        const pct = areas.length > 0 ? Math.round(freshCount / areas.length * 100) : 0;
+
+        // Warna badge: hijau dashboard jika all ✓, merah jika 0, warna pos jika sebagian
+        const badgeColor = allFresh ? PATROL_GREEN : noneFresh ? "#f87171" : col.ring;
+        const badgeBg    = allFresh ? "rgba(76,175,130,.14)" : noneFresh ? "rgba(248,113,113,.1)" : col.ring+"18";
+        const badgeBord  = allFresh ? `${PATROL_GREEN}50` : noneFresh ? "rgba(248,113,113,.3)" : col.ring+"40";
+
+        // Card glow — lebih kuat agar terasa seperti stat card dashboard
+        const cardGlow = allFresh
+          ? `0 0 20px ${PATROL_GREEN}25, 0 4px 16px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.04)`
+          : `0 4px 16px rgba(0,0,0,.55), 0 0 0 1px ${col.ring}15, inset 0 1px 0 rgba(255,255,255,.03)`;
+        const stCls = ["card-stagger-1","card-stagger-2","card-stagger-3","card-stagger-4"][posIdx] || "";
+
         return (
-          <div key={pos} style={{marginBottom:20}}>
-            {/* Pos header */}
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-              <div style={{width:10,height:10,borderRadius:"50%",background:col.ring,flexShrink:0}}/>
-              <div style={{fontSize:11,fontWeight:800,color:col.ring,letterSpacing:.8,textTransform:"uppercase"}}>{pos}</div>
-              <div style={{flex:1,height:1,background:col.ring+"30"}}/>
-              <div style={{fontSize:10,color:"var(--tx4)"}}>
-                {areas.filter(a=>{ const l=patrols.filter(p=>p.areas?.includes(a)).at(-1); return l&&Date.now()-l.ts<3600000; }).length}/{areas.length} ✓
+          <div key={pos} className={stCls} style={{
+            marginBottom: 14,
+            background: `linear-gradient(145deg, ${col.fill.replace('.10','0.09')}, var(--card-solid) 70%)`,
+            border: `1.5px solid ${col.ring}${allFresh?"50":"45"}`,
+            borderRadius: 16,
+            overflow: "hidden",
+            boxShadow: cardGlow,
+            transition: "box-shadow .3s ease",
+          }}>
+            {/* ── Top color stripe — mirip stat card dashboard ── */}
+            <div style={{
+              height: 3,
+              background: allFresh
+                ? `linear-gradient(90deg,${PATROL_GREEN},#80e0b0)`
+                : `linear-gradient(90deg,${col.ring},${col.ring}88)`,
+              opacity: .85,
+            }}/>
+
+            {/* ── Header ── */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "10px 14px 0",
+            }}>
+              {/* Icon dot pos */}
+              <div style={{
+                width: 34, height: 34, borderRadius: 10,
+                background: allFresh ? "rgba(76,175,130,.12)" : col.ring + "18",
+                border: `1.5px solid ${allFresh ? PATROL_GREEN+"55" : col.ring+"80"}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+                boxShadow: `0 2px 6px rgba(0,0,0,.3)`,
+              }}>
+                <div style={{
+                  width:11,height:11,borderRadius:"50%",
+                  background: allFresh ? PATROL_GREEN : col.ring,
+                  boxShadow: `0 0 8px ${allFresh?PATROL_GREEN:col.ring}aa`,
+                }}/>
+              </div>
+
+              <div style={{flex:1,minWidth:0}}>
+                {/* Nama pos — tipografi sama dengan label stat card */}
+                <div style={{
+                  fontSize:10,fontWeight:800,
+                  color: allFresh ? PATROL_GREEN : col.ring,
+                  letterSpacing:1.2,textTransform:"uppercase",
+                  textShadow: allFresh ? `0 0 8px ${PATROL_GREEN}55` : "none",
+                }}>{pos}</div>
+                <div style={{fontSize:9.5,color:"var(--tx3)",marginTop:1,fontWeight:600}}>
+                  {areas.length} titik patroli
+                </div>
+              </div>
+
+              {/* Badge progres — angka bergaya stat-number dashboard */}
+              <div style={{
+                background: badgeBg,
+                border: `1px solid ${badgeBord}`,
+                borderRadius: 10, padding: "5px 12px",
+                textAlign: "center", flexShrink: 0,
+                boxShadow: allFresh ? `0 0 10px ${PATROL_GREEN}30` : "none",
+              }}>
+                {/* Angka — font-variant & weight identik stat-number */}
+                <div style={{
+                  fontSize:17, fontWeight:900,
+                  color:badgeColor, lineHeight:1,
+                  fontVariantNumeric:"tabular-nums",
+                  letterSpacing:-.5,
+                  textShadow: allFresh ? `0 0 10px ${PATROL_GREEN}99` : "none",
+                  fontFamily:"'Plus Jakarta Sans',sans-serif",
+                }}>
+                  {freshCount}/{areas.length}
+                </div>
+                <div style={{
+                  fontSize:8, fontWeight:800,
+                  color: allFresh ? PATROL_GREEN : "var(--tx3)",
+                  marginTop:2,textTransform:"uppercase",letterSpacing:.7,
+                }}>
+                  {allFresh ? "✓ Semua" : "DICEK"}
+                </div>
               </div>
             </div>
-            {/* Circles */}
-            <div style={{display:"flex",flexWrap:"wrap",gap:10,justifyContent:"flex-start"}}>
+
+            {/* ── Progress bar ── */}
+            <div style={{padding:"8px 14px 0"}}>
+              <div style={{height:3,borderRadius:2,background:`${col.ring}15`,overflow:"hidden"}}>
+                <div style={{
+                  height:"100%", width:`${pct}%`,
+                  background: allFresh
+                    ? `linear-gradient(90deg,${PATROL_GREEN},#80e0b0)`
+                    : `linear-gradient(90deg,${col.ring},${col.ring}cc)`,
+                  borderRadius:2,
+                  transition:"width .7s cubic-bezier(.22,1,.36,1)",
+                  boxShadow: `0 0 8px ${allFresh?PATROL_GREEN:col.ring}aa`,
+                }}/>
+              </div>
+            </div>
+
+            {/* ── Circles ── */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"flex-start",padding:"10px 10px 14px"}}>
               {areas.map(area=>{
                 const last=patrols.filter(p=>p.areas?.includes(area)).at(-1);
                 return (
@@ -1889,8 +2869,8 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
       })}
 
       {/* Log hari ini */}
-      <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px",marginTop:4}}>
-        <div style={{fontSize:12,fontWeight:800,color:"var(--accent)",marginBottom:10}}>Log Patroli Hari Ini ({todP.length})</div>
+      <div className="log-card">
+        <div className="log-card-title">Log Patroli Hari Ini ({todP.length})</div>
         {todP.length===0&&<div style={{fontSize:11,color:"var(--tx3)"}}>Belum ada patroli</div>}
         {[...todP].reverse().slice(0,15).map(p=>(
           <div key={p.id} style={{padding:"8px 0",borderBottom:"1px solid var(--border)"}}>
@@ -1966,7 +2946,7 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
                       {checked&&<span style={{color:"#fff",fontSize:13,fontWeight:900}}>✓</span>}
                     </div>
                     <span style={{fontSize:13,fontWeight:600,color:checked?"var(--ok)":"var(--tx2)"}}>{CHECKLIST_ICON[item]||""} {item}</span>
-                    <span style={{marginLeft:"auto",fontSize:11,color:checked?"var(--ok)":"var(--tx4)",fontWeight:700}}>
+                    <span style={{marginLeft:"auto",fontSize:11,color:checked?"var(--ok)":"var(--tx3)",fontWeight:700}}>
                       {checked?"Aman":"—"}
                     </span>
                   </button>
@@ -2011,8 +2991,8 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
             </div>
 
             <div style={{display:"flex",gap:8}}>
-              <Btn onClick={doPatrol} color={photo?"var(--ok)":"var(--tx4)"} size="lg" full><IC n="ok" s={14}/> Simpan Patroli</Btn>
-              <Btn onClick={()=>setConfirm(null)} color="var(--tx4)" variant="outline">Batal</Btn>
+              <Btn onClick={doPatrol} color={photo?"var(--ok)":"var(--tx3)"} size="lg" full><IC n="ok" s={14}/> Simpan Patroli</Btn>
+              <Btn onClick={()=>setConfirm(null)} color="var(--tx3)" variant="outline">Batal</Btn>
             </div>
           </div>
         )}
@@ -2073,11 +3053,11 @@ function IncTab({incidents,setIncidents,posAssign,toast,canEdit}) {
       <PH title="Laporan Insiden" sub="Rendah · Sedang · Penting" action={canEdit&&<Btn onClick={()=>setOpen(true)} color="#dc2626"><IC n="plus" s={13}/> Laporkan</Btn>}/>
       {!canEdit&&<ReadOnlyBanner reguHari={getReguHari(new Date())}/>}
       <div style={{display:"flex",gap:8,marginBottom:14}}>
-        {INC_CAT.map(c=>{const cnt=incidents.filter(i=>i.category===c&&i.status!=="Selesai").length; return <div key={c} style={{background:CAT_BG[c],border:`1.5px solid ${CAT_COL[c]}28`,borderRadius:10,padding:"10px 14px",flex:1,textAlign:"center"}}><div style={{fontSize:24,fontWeight:900,color:CAT_COL[c]}}>{cnt}</div><div style={{fontSize:11,color:CAT_COL[c],fontWeight:700}}>{c}</div></div>;})}
+        {INC_CAT.map(c=>{const cnt=incidents.filter(i=>i.category===c&&i.status!=="Selesai").length; return <div key={c} className="stat-tile" style={{flex:1,background:CAT_BG[c],borderColor:`${CAT_COL[c]}28`}}><div className="stat-tile-number" style={{color:CAT_COL[c]}}>{cnt}</div><div className="stat-tile-label" style={{color:CAT_COL[c]}}>{c}</div></div>;})}
       </div>
       {incidents.length===0&&<div style={{color:"var(--tx3)",fontSize:13}}>Belum ada insiden.</div>}
       {[...incidents].reverse().map(inc=>(
-        <div key={inc.id} style={{background:CAT_BG[inc.category],border:`1.5px solid ${CAT_COL[inc.category]}22`,borderRadius:12,padding:"11px 13px",marginBottom:9}}>
+        <div key={inc.id} className="data-card" style={{background:CAT_BG[inc.category],borderColor:`${CAT_COL[inc.category]}30`}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:4}}>
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}><Bdg text={inc.category} color={CAT_COL[inc.category]}/><Bdg text={inc.status} color={inc.status==="Selesai"?"var(--ok)":"#ffcc00"}/>{inc.photo&&<Bdg text="📷 Foto" color="#a78bfa"/>}</div>
             <span style={{fontSize:10.5,color:"var(--tx3)"}}>{fmtDT(inc.ts)}</span>
@@ -2096,7 +3076,7 @@ function IncTab({incidents,setIncidents,posAssign,toast,canEdit}) {
         <Inp label="Deskripsi" value={fm.desc} onChange={e=>f("desc",e.target.value)} as="textarea" placeholder="Detail kejadian..."/>
         <div style={{display:"flex",gap:10}}><Inp label="Kategori" value={fm.category} onChange={e=>f("category",e.target.value)} as="select" half>{INC_CAT.map(c=><option key={c}>{c}</option>)}</Inp><Inp label="Pos" value={fm.pos} onChange={e=>f("pos",e.target.value)} as="select" half>{POS_LIST.map(p=><option key={p}>{p}</option>)}</Inp></div>
         <PhotoPicker photo={photo} setPhoto={setPhoto} label="📷 Foto Bukti Insiden" color="#dc2626"/>
-        <div style={{display:"flex",gap:8}}><Btn onClick={submit} color="#dc2626" size="lg">Simpan</Btn><Btn onClick={()=>{setOpen(false);setPhoto(null);}} color="var(--tx4)" variant="outline" size="lg">Batal</Btn></div>
+        <div style={{display:"flex",gap:8}}><Btn onClick={submit} color="#dc2626" size="lg">Simpan</Btn><Btn onClick={()=>{setOpen(false);setPhoto(null);}} color="var(--tx3)" variant="outline" size="lg">Batal</Btn></div>
       </Modal>
       <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Bukti Insiden">
         {viewPhoto&&<div style={{textAlign:"center"}}><img src={viewPhoto} alt="bukti" style={{width:"100%",maxHeight:400,objectFit:"contain",borderRadius:10,marginBottom:14}}/><Btn onClick={()=>setViewPhoto(null)} color="var(--accent)">Tutup</Btn></div>}
@@ -2127,8 +3107,8 @@ function PkgTab({packages,setPackages,toast,canEdit}) {
       <PH title="Paket & Kurir" sub="Catat dan kelola paket masuk" action={canEdit&&<Btn onClick={()=>setOpen(true)} color="var(--accent)"><IC n="plus" s={13}/> Catat</Btn>}/>
       {!canEdit&&<ReadOnlyBanner reguHari={getReguHari(new Date())}/>}
       <div style={{display:"flex",gap:10,marginBottom:14}}>
-        <div style={{background:"rgba(255,204,0,.07)",border:"1.5px solid #fcd34d",borderRadius:10,padding:"10px 14px",flex:1,textAlign:"center"}}><div style={{fontSize:24,fontWeight:900,color:"#ffcc00"}}>{pend.length}</div><div style={{fontSize:11,color:"#ffcc00",fontWeight:700}}>Belum Diambil</div></div>
-        <div style={{background:"var(--green-card)",border:"1.5px solid #86efac",borderRadius:10,padding:"10px 14px",flex:1,textAlign:"center"}}><div style={{fontSize:24,fontWeight:900,color:"var(--ok)"}}>{done.length}</div><div style={{fontSize:11,color:"var(--ok)",fontWeight:700}}>Selesai</div></div>
+        <div className="stat-tile" style={{flex:1,background:"rgba(255,204,0,.07)",borderColor:"rgba(255,204,0,.35)"}}><div className="stat-tile-number" style={{color:"#ffcc00"}}>{pend.length}</div><div className="stat-tile-label" style={{color:"#ffcc00"}}>Belum Diambil</div></div>
+        <div className="stat-tile" style={{flex:1,background:"var(--green-card)",borderColor:"var(--green-border)"}}><div className="stat-tile-number" style={{color:"var(--ok)"}}>{done.length}</div><div className="stat-tile-label" style={{color:"var(--ok)"}}>Selesai</div></div>
       </div>
       {pend.length>0&&<><div style={{fontSize:12,fontWeight:800,color:"#ffcc00",marginBottom:7}}>⚠ Menunggu Pengambilan</div>{pend.map(p=><PC key={p.id} p={p} upd={upd} canEdit={canEdit} onViewPhoto={setViewPhoto}/>)}<div style={{borderTop:"1px solid var(--border2)",margin:"12px 0"}}/></>}
       {done.length>0&&<><div style={{fontSize:12,fontWeight:700,color:"var(--tx3)",marginBottom:7}}>Riwayat</div>{[...done].reverse().map(p=><PC key={p.id} p={p} upd={upd} canEdit={canEdit} onViewPhoto={setViewPhoto}/>)}</>}
@@ -2139,7 +3119,7 @@ function PkgTab({packages,setPackages,toast,canEdit}) {
         <Inp label="Jenis" value={fm.type} onChange={e=>f("type",e.target.value)} as="select">{types.map(t=><option key={t}>{t}</option>)}</Inp>
         <Inp label="Resi / Keterangan" value={fm.notes} onChange={e=>f("notes",e.target.value)} placeholder="Nomor resi"/>
         <PhotoPicker photo={photo} setPhoto={setPhoto} label="📷 Foto Paket" color="#ffcc00"/>
-        <div style={{display:"flex",gap:8}}><Btn onClick={submit} color="var(--accent)" size="lg">Simpan</Btn><Btn onClick={()=>{setOpen(false);setPhoto(null);}} color="var(--tx4)" variant="outline" size="lg">Batal</Btn></div>
+        <div style={{display:"flex",gap:8}}><Btn onClick={submit} color="var(--accent)" size="lg">Simpan</Btn><Btn onClick={()=>{setOpen(false);setPhoto(null);}} color="var(--tx3)" variant="outline" size="lg">Batal</Btn></div>
       </Modal>
       <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Paket">
         {viewPhoto&&<div style={{textAlign:"center"}}><img src={viewPhoto} alt="paket" style={{width:"100%",maxHeight:400,objectFit:"contain",borderRadius:10,marginBottom:14}}/><Btn onClick={()=>setViewPhoto(null)} color="var(--accent)">Tutup</Btn></div>}
@@ -2149,7 +3129,7 @@ function PkgTab({packages,setPackages,toast,canEdit}) {
 }
 function PC({p,upd,canEdit,onViewPhoto}) {
   const pen=p.status==="Belum Diambil";
-  return <div style={{background:pen?"rgba(255,204,0,.07)":"var(--card-solid)",border:`1.5px solid ${pen?"rgba(255,204,0,.4)":"var(--border)"}`,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+  return <div className="data-card" style={{background:pen?"rgba(255,204,0,.07)":"var(--card-solid)",borderColor:pen?"rgba(255,204,0,.4)":"var(--border)",padding:"10px 12px",marginBottom:8}}>
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><div style={{display:"flex",gap:5,flexWrap:"wrap"}}><Bdg text={p.type} color="var(--accent)"/><Bdg text={p.status} color={pen?"#ffcc00":"var(--ok)"}/>{p.photo&&<Bdg text="📷" color="#a78bfa"/>}</div><span style={{fontSize:10.5,color:"var(--tx3)"}}>{fmtDT(p.ts)}</span></div>
     <div style={{fontSize:13,fontWeight:800,color:"var(--tx2)"}}>Untuk: {p.recipient}</div>
     <div style={{fontSize:11.5,color:"var(--tx3)"}}>Dari: {p.sender||"—"}</div>
@@ -2192,7 +3172,7 @@ function GuestTab({guests,setGuests,toast,canEdit}) {
         <Inp label="Kamar / Kelas" value={fm.room} onChange={e=>f("room",e.target.value)} placeholder="GH-3, Asrama A, dst."/>
         <Inp label="No. Kendaraan" value={fm.vehicle} onChange={e=>f("vehicle",e.target.value.toUpperCase())} placeholder="Contoh: D 1234 AB"/>
         <PhotoPicker photo={photo} setPhoto={setPhoto} label="📷 Foto Tamu / KTP" color="#a78bfa"/>
-        <div style={{display:"flex",gap:8}}><Btn onClick={submit} color="#a78bfa" size="lg">Simpan</Btn><Btn onClick={()=>{setOpen(false);setPhoto(null);}} color="var(--tx4)" variant="outline" size="lg">Batal</Btn></div>
+        <div style={{display:"flex",gap:8}}><Btn onClick={submit} color="#a78bfa" size="lg">Simpan</Btn><Btn onClick={()=>{setOpen(false);setPhoto(null);}} color="var(--tx3)" variant="outline" size="lg">Batal</Btn></div>
       </Modal>
       <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Tamu">
         {viewPhoto&&<div style={{textAlign:"center"}}><img src={viewPhoto} alt="tamu" style={{width:"100%",maxHeight:400,objectFit:"contain",borderRadius:10,marginBottom:14}}/><Btn onClick={()=>setViewPhoto(null)} color="var(--accent)">Tutup</Btn></div>}
@@ -2202,8 +3182,8 @@ function GuestTab({guests,setGuests,toast,canEdit}) {
 }
 function GC({g,co,canEdit,onViewPhoto}) {
   const act=g.status==="Masih Ada";
-  return <div style={{background:act?"rgba(167,139,250,.1)":"var(--card-solid)",border:`1.5px solid ${act?"rgba(167,139,250,.4)":"var(--border)"}`,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><div style={{display:"flex",gap:5,flexWrap:"wrap"}}><Bdg text={g.type} color="#a78bfa"/><Bdg text={g.status} color={act?"#a78bfa":"var(--tx4)"}/>{g.photo&&<Bdg text="📷" color="#a78bfa"/>}</div><span style={{fontSize:10.5,color:"var(--tx3)"}}>{fmtDT(g.ts)}</span></div>
+  return <div className="data-card" style={{background:act?"rgba(167,139,250,.1)":"var(--card-solid)",borderColor:act?"rgba(167,139,250,.4)":"var(--border)",padding:"10px 12px",marginBottom:8}}>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><div style={{display:"flex",gap:5,flexWrap:"wrap"}}><Bdg text={g.type} color="#a78bfa"/><Bdg text={g.status} color={act?"#a78bfa":"var(--tx3)"}/>{g.photo&&<Bdg text="📷" color="#a78bfa"/>}</div><span style={{fontSize:10.5,color:"var(--tx3)"}}>{fmtDT(g.ts)}</span></div>
     <div style={{fontSize:13,fontWeight:800,color:"var(--tx2)"}}>{g.name}</div>
     <div style={{fontSize:11.5,color:"var(--tx3)"}}>{g.institution}</div>
     {g.purpose&&<div style={{fontSize:11,color:"var(--tx3)"}}>Keperluan: {g.purpose}</div>}
@@ -2398,7 +3378,7 @@ function MutPrint({m, onClose, inventarisDaftar, inventarisCek}) {
           w.focus();
           setTimeout(()=>{w.print();},400);
         }} color="var(--accent)" size="lg"><IC n="print" s={14}/> Cetak</Btn>
-        <Btn onClick={onClose} color="var(--tx4)" variant="outline" size="lg">Tutup</Btn>
+        <Btn onClick={onClose} color="var(--tx3)" variant="outline" size="lg">Tutup</Btn>
       </div>
     </div>
   );
@@ -2584,11 +3564,11 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
       {!canEdit&&<ReadOnlyBanner reguHari={reguHari}/>}
       {mutations.length===0&&<div style={{color:"var(--tx3)",fontSize:13}}>Belum ada mutasi.</div>}
       {[...mutations].reverse().map(m=>(
-        <div key={m.id} style={{background:"var(--card-solid)",border:`1.5px solid ${m.konfirmasi?"var(--green-border)":"var(--card-solid)"}`,borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+        <div key={m.id} className="data-card" style={{borderColor:m.konfirmasi?"var(--green-border)":"var(--border)"}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:4}}>
             <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
               <Bdg text={`Regu ${m.fromRegu}`} color="var(--accent)"/>
-              <IC n="arr" s={13} c="var(--tx4)"/>
+              <IC n="arr" s={13} c="var(--tx3)"/>
               {m.toRegu&&<Bdg text={`Regu ${m.toRegu}`} color="var(--ok)"/>}
               {m.photo&&<Bdg text="📷" color="#a78bfa"/>}
               {m.konfirmasi
@@ -2647,7 +3627,7 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
           </div>
           <div style={{display:"flex",gap:8}}>
             <Btn onClick={()=>konfirmasiTerima(cekOpen)} color="var(--ok)" size="lg">Konfirmasi Diterima</Btn>
-            <Btn onClick={()=>setCekOpen(null)} color="var(--tx4)" variant="outline" size="lg">Batal</Btn>
+            <Btn onClick={()=>setCekOpen(null)} color="var(--tx3)" variant="outline" size="lg">Batal</Btn>
           </div>
         </div>}
       </Modal>
@@ -2670,7 +3650,7 @@ function MutTab({mutations,setMutations,reguHari,toast,canEdit,patrols=[],incide
         <div style={{display:"flex",gap:10}}><Inp label="Insiden" value={fm.incidents} onChange={e=>f("incidents",e.target.value)} placeholder="Detail" half/><Inp label="Paket" value={fm.packages} onChange={e=>f("packages",e.target.value)} placeholder="Jumlah" half/><Inp label="Tamu" value={fm.guests} onChange={e=>f("guests",e.target.value)} placeholder="Nama" half/></div>
         <Inp label="Catatan Tambahan" value={fm.notes} onChange={e=>f("notes",e.target.value)} as="textarea" placeholder="Pesan untuk regu berikutnya..."/>
         <PhotoPicker photo={photo} setPhoto={setPhoto} label="📷 Foto Kondisi Laporan" color="var(--accent)"/>
-        <div style={{display:"flex",gap:8}}><Btn onClick={submit} color="var(--accent)" size="lg">Simpan</Btn><Btn onClick={()=>setOpen(false)} color="var(--tx4)" variant="outline" size="lg">Batal</Btn></div>
+        <div style={{display:"flex",gap:8}}><Btn onClick={submit} color="var(--accent)" size="lg">Simpan</Btn><Btn onClick={()=>setOpen(false)} color="var(--tx3)" variant="outline" size="lg">Batal</Btn></div>
       </Modal>
     </div>
   );
@@ -2758,7 +3738,7 @@ function AbsenTab({absen,setAbsen,liburData,setLiburData,reguHari,toast,canEdit,
       </div>
 
       {/* Daftar absen anggota */}
-      <div style={{background:"var(--card-solid)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden",marginBottom:14}}>
+      <div className="log-card" style={{overflow:"hidden",marginBottom:14,padding:0}}>
         <div style={{background:"var(--accent)",padding:"8px 14px",display:"grid",gridTemplateColumns:"1fr auto",alignItems:"center"}}>
           <div style={{fontSize:11,fontWeight:800,color:"#fff"}}>Regu {reguViewDate} — Absensi</div>
           <div style={{fontSize:10,color:"rgba(255,255,255,.7)"}}>
@@ -2789,7 +3769,7 @@ function AbsenTab({absen,setAbsen,liburData,setLiburData,reguHari,toast,canEdit,
               {(canEdit||isAdmin)&&(
                 <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                   {statusList.map(s=>(
-                    <button key={s} onClick={()=>setStatus(nm,s)} style={{padding:"4px 10px",borderRadius:7,border:`1.5px solid ${st?.status===s?STATUS_COL[s]:"var(--border)"}`,background:st?.status===s?STATUS_BG[s]:"var(--card-solid)",color:st?.status===s?STATUS_COL[s]:"var(--tx4)",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    <button key={s} onClick={()=>setStatus(nm,s)} style={{padding:"4px 10px",borderRadius:7,border:`1.5px solid ${st?.status===s?STATUS_COL[s]:"var(--border2)"}`,background:st?.status===s?STATUS_BG[s]:"var(--card-solid)",color:st?.status===s?STATUS_COL[s]:"var(--tx2)",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                       {s}
                     </button>
                   ))}
@@ -2820,7 +3800,7 @@ function AbsenTab({absen,setAbsen,liburData,setLiburData,reguHari,toast,canEdit,
                         padding:"5px 11px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
                         background:isL?"rgba(255,204,0,.1)":"var(--card-solid)",
                         border:`1.5px solid ${isL?"#ffcc00":"var(--border)"}`,
-                        color:isL?"#ffcc00":"var(--tx4)",
+                        color:isL?"#ffcc00":"var(--tx3)",
                         display:"flex",alignItems:"center",gap:5
                       }}>
                         {isL?"🌴":"○"} {nm}
@@ -3148,7 +4128,7 @@ function LoginScreen({ onLogin, userPins }) {
 
       {step === "pin" && (
         <div style={{ width: "100%", maxWidth: 300, textAlign: "center", animation:"slideUp .35s ease" }}>
-          <button onClick={() => { setStep("select"); setErr(""); setPin(""); }} style={{ background: "none", border: "none", color: "transparent", fontSize: 12, cursor: "default", marginBottom: 20, fontFamily: "inherit", height: 0, padding: 0, overflow: "hidden" }}>← Kembali</button>
+          <button onClick={() => { setStep("select"); setErr(""); setPin(""); }} style={{ background: "none", border: "1px solid var(--border2)", color: "var(--tx3)", fontSize: 12, cursor: "pointer", marginBottom: 20, fontFamily: "inherit", padding: "7px 16px", borderRadius: 8, fontWeight: 600 }}>Kembali</button>
           <div style={{ width: 52, height: 52, borderRadius: 14, background: selected.isAdmin ? "var(--card2)" : `${reguColors[selected.regu]}40`, border: `2px solid ${selected.isAdmin ? "var(--border2)" : reguColors[selected.regu]}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px", animation:"avatarPop .4s cubic-bezier(.34,1.56,.64,1)" }}>
             <span style={{ fontSize: 22 }}>{selected.isAdmin ? "🔐" : "👤"}</span>
           </div>
@@ -3163,25 +4143,22 @@ function LoginScreen({ onLogin, userPins }) {
           </div>
           {err && <div style={{ fontSize: 12, color: "#ff3333", marginBottom: 12, animation: shake ? "shake .4s" : "fadeIn .3s" }}>{err}</div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 20 }}>
-            {[1,2,3,4,5,6,7,8,9,"↩",0,"⌫"].map((d, i) => (
+            {[1,2,3,4,5,6,7,8,9,"Kembali",0,"⌫"].map((d, i) => (
               <button key={i} onClick={() =>
                 d === "⌫" ? handleDel()
-                : d === "↩" ? (setStep("select"), setErr(""), setPin(""))
+                : d === "Kembali" ? (setStep("select"), setErr(""), setPin(""))
                 : handlePinInput(String(d))
               }
-                style={{ background: pressedKey === String(d) ? "var(--card2)" : d === "⌫" ? "rgba(239,68,68,.15)" : d === "↩" ? "rgba(100,100,200,.12)" : "var(--card2)", border: `1.5px solid ${d === "↩" ? "rgba(100,100,200,.4)" : d === "⌫" ? "rgba(239,68,68,.4)" : "var(--border2)"}`, borderRadius: 12, height: 56, fontSize: d === "⌫" || d === "↩" ? 18 : 22, fontWeight: 700, color: d === "⌫" ? "var(--r)" : d === "↩" ? "var(--tx3)" : "var(--tx)", cursor: "pointer", fontFamily: "inherit", transition: "all .12s", transform: pressedKey === String(d) ? "scale(.92)" : "scale(1)" }}>
+                style={{ background: pressedKey === String(d) ? "var(--card2)" : d === "⌫" ? "rgba(239,68,68,.15)" : d === "Kembali" ? "rgba(100,100,200,.12)" : "var(--card2)", border: `1.5px solid ${d === "Kembali" ? "rgba(100,100,200,.4)" : d === "⌫" ? "rgba(239,68,68,.4)" : "var(--border2)"}`, borderRadius: 12, height: 56, fontSize: d === "⌫" || d === "Kembali" ? 12 : 22, fontWeight: 700, color: d === "⌫" ? "var(--r)" : d === "Kembali" ? "var(--tx3)" : "var(--tx)", cursor: "pointer", fontFamily: "inherit", transition: "all .12s", transform: pressedKey === String(d) ? "scale(.92)" : "scale(1)" }}>
                 {d}
               </button>
             ))}
           </div>
-          <div style={{ marginTop: 16, fontSize: 11, color: "var(--tx4)" }}>
+          <div style={{ marginTop: 16, fontSize: 11, color: "var(--tx3)" }}>
             {selected.isAdmin ? "PIN Admin default: 000000" : "PIN default: 123456"}
           </div>
         </div>
       )}
-      <div style={{ marginTop: 32, fontSize: 11, color: "var(--tx4)", textAlign: "center", letterSpacing: .5 }}>
-        Dikembangkan oleh <span style={{ color: "var(--accent-light)", fontWeight: 700 }}>Rukman Abu Hamzah</span>
-      </div>
       <style>{`
         @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
         
@@ -3195,12 +4172,7 @@ function LoginScreen({ onLogin, userPins }) {
 }
 
 // ─── PROFILE / PROGRES TAB ────────────────────────────────────────────────────
-function ProfileTab({ currentUser, patrols, standJaga, incidents, mutations, onLogout, onChangePin, toast, userPins, setUserPins }) {
-  const [changePinOpen, setChangePinOpen] = useState(false);
-  const [oldPin, setOldPin] = useState("");
-  const [newPin, setNewPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-  // userPins & setUserPins passed as props
+function ProfileTab({ currentUser, patrols, standJaga, incidents, mutations, onLogout, onChangePin, toast, userPins, setUserPins, changePinOpen, setChangePinOpen }) {
 
   const name = currentUser.name;
   const today = new Date();
@@ -3240,7 +4212,7 @@ function ProfileTab({ currentUser, patrols, standJaga, incidents, mutations, onL
     <div style={{ background: bg, border: `1.5px solid ${color}20`, borderRadius: 12, padding: "12px 14px", textAlign: "center" }}>
       <div style={{ fontSize: 28, fontWeight: 900, color }}>{value}</div>
       <div style={{ fontSize: 10.5, fontWeight: 700, color, marginBottom: 2 }}>{label}</div>
-      {sub && <div style={{ fontSize: 10, color: "var(--tx4)" }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 10, color: "var(--tx3)" }}>{sub}</div>}
     </div>
   );
 
@@ -3276,9 +4248,9 @@ function ProfileTab({ currentUser, patrols, standJaga, incidents, mutations, onL
       </div>
 
       {/* Log Patroli Terbaru */}
-      <div style={{ background: "var(--card-solid)", border: "1.5px solid #081510", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+      <div style={{ background: "var(--card-solid)", border: "1.5px solid var(--border2)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: "var(--accent)", marginBottom: 10 }}>🗓 Log Patroli Terbaru</div>
-        {myPatrols.length === 0 && <div style={{ fontSize: 12, color: "var(--tx4)" }}>Belum ada patroli</div>}
+        {myPatrols.length === 0 && <div style={{ fontSize: 12, color: "var(--tx3)" }}>Belum ada patroli</div>}
         {[...myPatrols].reverse().slice(0, 8).map(p => (
           <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
             <div style={{ width: 30, height: 30, background: p.photo?"rgba(167,139,250,.1)":"var(--green-card)", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -3286,7 +4258,7 @@ function ProfileTab({ currentUser, patrols, standJaga, incidents, mutations, onL
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--tx)" }}>{p.areas?.join(", ")}</div>
-              <div style={{ fontSize: 10.5, color: "var(--tx4)" }}>{p.pos}{p.photo&&<span style={{color:"#a78bfa",marginLeft:6}}>📷 Ada foto</span>}</div>
+              <div style={{ fontSize: 10.5, color: "var(--tx3)" }}>{p.pos}{p.photo&&<span style={{color:"#a78bfa",marginLeft:6}}>📷 Ada foto</span>}</div>
             </div>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ok)" }}>{fmtDT(p.ts)}</div>
           </div>
@@ -3294,33 +4266,21 @@ function ProfileTab({ currentUser, patrols, standJaga, incidents, mutations, onL
       </div>
 
       {/* Log Stand Jaga Terbaru */}
-      <div style={{ background: "var(--card-solid)", border: "1.5px solid #081510", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+      <div style={{ background: "var(--card-solid)", border: "1.5px solid var(--border2)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: "var(--accent)", marginBottom: 10 }}>🛡 Log Stand Jaga Terbaru</div>
-        {myStand.length === 0 && <div style={{ fontSize: 12, color: "var(--tx4)" }}>Belum ada stand jaga</div>}
+        {myStand.length === 0 && <div style={{ fontSize: 12, color: "var(--tx3)" }}>Belum ada stand jaga</div>}
         {[...myStand].reverse().slice(0, 5).map(s => (
           <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
             <div style={{ width: 30, height: 30, background: "var(--green-card)", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><IC n="shield" s={13} c="var(--accent)" /></div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--tx)" }}>{s.area}</div>
-              <div style={{ fontSize: 10.5, color: "var(--tx4)" }}>{s.pos}</div>
+              <div style={{ fontSize: 10.5, color: "var(--tx3)" }}>{s.pos}</div>
             </div>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)" }}>{fmtDT(s.ts)}</div>
           </div>
         ))}
       </div>
 
-      {/* Aksi */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-        <Btn onClick={() => setChangePinOpen(true)} color="#a78bfa" variant="outline" full>🔑 Ganti PIN</Btn>
-        <Btn onClick={onLogout} color="#dc2626" variant="outline" full>Keluar</Btn>
-      </div>
-
-      <Modal open={changePinOpen} onClose={() => setChangePinOpen(false)} title="Ganti PIN">
-        <Inp label="PIN Lama" value={oldPin} onChange={e => setOldPin(e.target.value.replace(/[^0-9]/g,"").slice(0,6))} type="tel" placeholder="Ketik 6 angka" />
-        <Inp label="PIN Baru (6 digit)" value={newPin} onChange={e => setNewPin(e.target.value.replace(/[^0-9]/g,"").slice(0,6))} type="tel" placeholder="Ketik 6 angka" />
-        <Inp label="Konfirmasi PIN Baru" value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/[^0-9]/g,"").slice(0,6))} type="tel" placeholder="Ulangi PIN baru" />
-        <div style={{ display: "flex", gap: 8 }}><Btn onClick={handleChangePin} color="#a78bfa" size="lg">Simpan</Btn><Btn onClick={() => setChangePinOpen(false)} color="var(--tx4)" variant="outline" size="lg">Batal</Btn></div>
-      </Modal>
     </div>
   );
 }
@@ -3495,23 +4455,23 @@ function AdminMemberTab({ patrols, standJaga, incidents, mutations }) {
             <div style={{ background: "rgba(255,255,255,.2)", borderRadius: 8, padding: "6px 12px", textAlign: "center" }}><div style={{ fontSize: 18, fontWeight: 900 }}>{stats.incidents}</div><div style={{ fontSize: 10 }}>Insiden</div></div>
           </div>
         </div>
-        <div style={{ background: "var(--card-solid)", border: "1.5px solid #081510", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
+        <div style={{ background: "var(--card-solid)", border: "1.5px solid var(--border2)", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: "var(--ok)", marginBottom: 8 }}>Log Patroli ({myP.length})</div>
-          {myP.length === 0 && <div style={{ fontSize: 12, color: "var(--tx4)" }}>Belum ada</div>}
+          {myP.length === 0 && <div style={{ fontSize: 12, color: "var(--tx3)" }}>Belum ada</div>}
           {[...myP].reverse().slice(0, 10).map(p => (
             <div key={p.id} style={{ padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
               <div style={{ fontWeight: 700, color: "var(--tx)" }}>{p.areas?.join(", ")}</div>
-              <div style={{ color: "var(--tx4)", fontSize: 10.5 }}>{fmtDT(p.ts)} · {p.pos}</div>
+              <div style={{ color: "var(--tx3)", fontSize: 10.5 }}>{fmtDT(p.ts)} · {p.pos}</div>
             </div>
           ))}
         </div>
-        <div style={{ background: "var(--card-solid)", border: "1.5px solid #081510", borderRadius: 12, padding: "12px 14px" }}>
+        <div style={{ background: "var(--card-solid)", border: "1.5px solid var(--border2)", borderRadius: 12, padding: "12px 14px" }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: "var(--accent)", marginBottom: 8 }}>Log Stand Jaga ({myS.length})</div>
-          {myS.length === 0 && <div style={{ fontSize: 12, color: "var(--tx4)" }}>Belum ada</div>}
+          {myS.length === 0 && <div style={{ fontSize: 12, color: "var(--tx3)" }}>Belum ada</div>}
           {[...myS].reverse().slice(0, 10).map(s => (
             <div key={s.id} style={{ padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
               <div style={{ fontWeight: 700, color: "var(--tx)" }}>{s.area}</div>
-              <div style={{ color: "var(--tx4)", fontSize: 10.5 }}>{fmtDT(s.ts)} · {s.pos}</div>
+              <div style={{ color: "var(--tx3)", fontSize: 10.5 }}>{fmtDT(s.ts)} · {s.pos}</div>
             </div>
           ))}
         </div>
@@ -3524,9 +4484,9 @@ function AdminMemberTab({ patrols, standJaga, incidents, mutations }) {
       <PH title="Anggota & Keamanan" sub="Progres, audit log, dan manajemen PIN" />
 
       {/* Sub-tab */}
-      <div style={{ display:"flex", gap:0, background:"var(--card-solid)", borderRadius:10, padding:3, marginBottom:14 }}>
-        {[{id:"progres",label:"📊 Progres"},{id:"audit",label:"📋 Audit Log"},{id:"pin",label:"🔑 Reset PIN"},{id:"reset",label:"🗑 Reset Data"}].map(t=>(
-          <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{ flex:1, border:"none", borderRadius:8, padding:"8px 4px", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", background: activeTab===t.id?"var(--card-solid)":"transparent", color: activeTab===t.id?"var(--accent)":"var(--tx4)", boxShadow: activeTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none", transition:"all .2s" }}>
+      <div className="subtab-bar">
+        {[{id:"progres",label:"📊 Progres"},{id:"audit",label:"📋 Audit"},{id:"pin",label:"🔑 PIN"},{id:"reset",label:"🗑 Reset"}].map(t=>(
+          <button key={t.id} onClick={()=>setActiveTab(t.id)} className={"subtab-btn" + (activeTab===t.id?" active":"")}>
             {t.label}
           </button>
         ))}
@@ -3542,16 +4502,16 @@ function AdminMemberTab({ patrols, standJaga, incidents, mutations }) {
           {REGU[r].map(name => {
             const stats = getMemberStats(name);
             return (
-              <div key={name} onClick={() => setSelectedMember({ name, regu: r })} style={{ background: "var(--card-solid)", border: `1.5px solid ${reguColors[r]}20`, borderRadius: 12, padding: "12px 14px", marginBottom: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+              <div key={name} onClick={() => setSelectedMember({ name, regu: r })} className="member-card" style={{ borderColor: `${reguColors[r]}25` }}>
                 <div style={{ width: 42, height: 42, background: `${reguColors[r]}15`, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>👤</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: "var(--tx)" }}>{name}</div>
-                  <div style={{ fontSize: 11, color: "var(--tx4)", marginTop: 2 }}>Hari ini: {stats.patrolsToday} patroli · {stats.standToday} stand</div>
-                  <div style={{ fontSize: 11, color: "var(--tx4)" }}>Total: {stats.patrols} patroli · {stats.incidents} insiden</div>
+                  <div style={{ fontSize: 11, color: "var(--tx3)", marginTop: 2 }}>Hari ini: {stats.patrolsToday} patroli · {stats.standToday} stand</div>
+                  <div style={{ fontSize: 11, color: "var(--tx3)" }}>Total: {stats.patrols} patroli · {stats.incidents} insiden</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 18, fontWeight: 900, color: reguColors[r] }}>{stats.score}</div>
-                  <div style={{ fontSize: 9.5, color: "var(--tx4)" }}>poin</div>
+                  <div style={{ fontSize: 9.5, color: "var(--tx3)" }}>poin</div>
                 </div>
                 <IC n="arr" s={14} c="var(--border2)" />
               </div>
@@ -3570,7 +4530,7 @@ function AdminMemberTab({ patrols, standJaga, incidents, mutations }) {
           {loadingAudit && <div style={{ textAlign:"center", padding:20, color:"var(--tx3)", fontSize:12 }}>Memuat...</div>}
           {!loadingAudit && auditLogs.length===0 && <div style={{ textAlign:"center", padding:20, color:"var(--tx3)", fontSize:12 }}>Belum ada log</div>}
           {!loadingAudit && auditLogs.map(log => (
-            <div key={log.id} style={{ background:"var(--card-solid)", border:"1.5px solid #f1f5f9", borderRadius:10, padding:"10px 12px", marginBottom:7, display:"flex", gap:10, alignItems:"flex-start" }}>
+            <div key={log.id} className="audit-card">
               <span style={{ fontSize:18, flexShrink:0 }}>{ACTION_ICON[log.action]||"📝"}</span>
               <div style={{ flex:1 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -3605,7 +4565,7 @@ function AdminMemberTab({ patrols, standJaga, incidents, mutations }) {
             <div key={r} style={{ marginBottom:18 }}>
               <div style={{ fontSize:12, fontWeight:800, color:reguColors[r], marginBottom:8 }}>REGU {r}</div>
               {REGU[r].map(name=>(
-                <div key={name} style={{ background:"var(--card-solid)", border:"1.5px solid var(--border2)", borderRadius:11, padding:"10px 14px", marginBottom:7, display:"flex", alignItems:"center", gap:10 }}>
+                <div key={name} className="data-card" style={{ display:"flex", alignItems:"center", gap:10 }}>
                   <span style={{ fontSize:18 }}>👤</span>
                   <div style={{ flex:1 }}>
                     <div style={{ fontSize:13, fontWeight:800, color:"var(--tx2)" }}>{name}</div>
@@ -3666,7 +4626,7 @@ function AdminMemberTab({ patrols, standJaga, incidents, mutations }) {
                 </div>
                 <div style={{flex:1}}>
                   <div style={{fontSize:12.5,fontWeight:700,color:resetDataItems[item.key]?"#dc2626":"var(--tx)"}}>{item.label}</div>
-                  <div style={{fontSize:10.5,color:"var(--tx4)"}}>{item.desc}</div>
+                  <div style={{fontSize:10.5,color:"var(--tx3)"}}>{item.desc}</div>
                 </div>
               </label>
             ))}
@@ -3779,7 +4739,7 @@ function InstruksiTab({instruksi, setInstruksi, toast, isAdmin, currentUser}) {
       {/* Tab aktif / arsip */}
       <div style={{display:"flex",gap:0,marginBottom:14,background:"var(--card-solid)",borderRadius:10,padding:3}}>
         {[["aktif",`Aktif${belumSelesai>0?" ("+belumSelesai+" belum)":""}`],["arsip",`Arsip (${arsipList.length})`]].map(([v,l])=>(
-          <button key={v} onClick={()=>setShowArsip(v==="arsip")} style={{flex:1,padding:"8px 0",fontSize:12,fontWeight:700,borderRadius:8,border:"none",cursor:"pointer",background:showArsip===(v==="arsip")?"var(--card-solid)":"transparent",color:showArsip===(v==="arsip")?"var(--accent)":"var(--tx4)",boxShadow:showArsip===(v==="arsip")?"0 1px 6px rgba(0,0,0,.08)":"none",fontFamily:"inherit"}}>
+          <button key={v} onClick={()=>setShowArsip(v==="arsip")} style={{flex:1,padding:"8px 0",fontSize:12,fontWeight:700,borderRadius:8,border:"none",cursor:"pointer",background:showArsip===(v==="arsip")?"var(--card-solid)":"transparent",color:showArsip===(v==="arsip")?"var(--accent)":"var(--tx3)",boxShadow:showArsip===(v==="arsip")?"0 1px 6px rgba(0,0,0,.08)":"none",fontFamily:"inherit"}}>
             {l}
           </button>
         ))}
@@ -3802,7 +4762,7 @@ function InstruksiTab({instruksi, setInstruksi, toast, isAdmin, currentUser}) {
                   <span style={{background:ins.selesai?"var(--accent-light)":PRI_COL[ins.prioritas]||"var(--accent)",color:"#fff",borderRadius:6,padding:"2px 9px",fontSize:10.5,fontWeight:800}}>
                     {ins.selesai?"✓":ins.prioritas==="Penting"?"🚨":ins.prioritas==="Info"?"ℹ️":"📋"} {ins.selesai?"Selesai":ins.prioritas}
                   </span>
-                  {ins.targetRegu!=="Semua"&&<Bdg text={"Regu "+ins.targetRegu} color="var(--tx4)"/>}
+                  {ins.targetRegu!=="Semua"&&<Bdg text={"Regu "+ins.targetRegu} color="var(--tx3)"/>}
                   <span style={{fontSize:10,color:"var(--tx3)"}}>{fmtDT(ins.ts)}</span>
                   {ins.editedAt&&<span style={{fontSize:9,color:"var(--tx3)"}}>(diedit)</span>}
                 </div>
@@ -3886,7 +4846,7 @@ function InstruksiTab({instruksi, setInstruksi, toast, isAdmin, currentUser}) {
         <Inp label="Isi Instruksi" value={fm.isi} onChange={e=>f("isi",e.target.value)} as="textarea" placeholder="Detail perintah / arahan dari pimpinan..."/>
         <div style={{display:"flex",gap:8}}>
           <Btn onClick={submit} color="#dc2626" size="lg" full>{editItem?"💾 Simpan Perubahan":"🚨 Kirim Instruksi"}</Btn>
-          <Btn onClick={()=>setOpen(false)} color="var(--tx4)" variant="outline">Batal</Btn>
+          <Btn onClick={()=>setOpen(false)} color="var(--tx3)" variant="outline">Batal</Btn>
         </div>
       </Modal>
     </div>
@@ -3896,7 +4856,7 @@ function InstruksiTab({instruksi, setInstruksi, toast, isAdmin, currentUser}) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD PIMPINAN TAB
 // ═══════════════════════════════════════════════════════════════════════════════
-function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,currentUser}) {
+function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,currentUser,packages,guests,reguHari,liburData,setLiburData,setTab,canEdit,isAdmin,statusPimpinan={hadir:true},setStatusPimpinan,toast}) {
 
   // ── Kepatuhan patroli 7 hari terakhir ──
   const days7 = Array.from({length:7},(_,i)=>{
@@ -3938,11 +4898,10 @@ function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,curren
     <div style={{paddingBottom:8}}>
 
       {/* HERO */}
-      <div style={{background:"linear-gradient(135deg,var(--qr-border),#00cc66)",borderRadius:16,padding:"18px 20px",marginBottom:14,color:"#fff"}}>
-        <div style={{fontSize:10,opacity:.7,letterSpacing:1}}>SIPAMDAL — LAPORAN EKSEKUTIF</div>
-        <div style={{fontSize:20,fontWeight:900,letterSpacing:.5,marginTop:2}}>Dashboard Pimpinan</div>
-        <div style={{fontSize:10,opacity:.6}}>BBPKA II Jatinangor · {now.toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
-        <div style={{marginTop:12,display:"flex",alignItems:"center",gap:10}}>
+      <div style={{background: emptyPos.length>1 ? "linear-gradient(135deg,#7a1010,#dc2626)" : emptyPos.length===1 ? "linear-gradient(135deg,#5a4a00,#c49a3c)" : "linear-gradient(135deg,var(--qr-border),#00cc66)",borderRadius:16,padding:"18px 20px",marginBottom:14,color:"#fff"}}>
+        <div style={{fontSize:10,opacity:.65,letterSpacing:.5}}>BBPKA II Jatinangor · {now.toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
+
+        <div style={{marginTop:10,display:"flex",alignItems:"center",gap:10}}>
           <div style={{background:systemStatus.bg,borderRadius:8,padding:"5px 12px"}}>
             <span style={{fontSize:13,fontWeight:900,color:systemStatus.color}}>● {systemStatus.text}</span>
           </div>
@@ -3970,7 +4929,7 @@ function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,curren
         <div style={{background:"rgba(0,120,212,.1)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
           <div style={{fontSize:10,color:"var(--tx3)",marginBottom:2}}>Pos Terisi</div>
           <div style={{fontSize:28,fontWeight:900,color:"var(--accent)"}}>{filledPos.length}<span style={{fontSize:13,fontWeight:600,color:"var(--tx3)"}}>/{POS_LIST.length}</span></div>
-          <div style={{fontSize:10,color:emptyPos.length>0?"#dc2626":"var(--tx4)"}}>{emptyPos.length>0?`⚠ ${emptyPos.length} kosong`:"Semua terisi ✓"}</div>
+          <div style={{fontSize:10,color:emptyPos.length>0?"#dc2626":"var(--ok)"}}>{emptyPos.length>0?`⚠ ${emptyPos.length} kosong`:"Semua terisi ✓"}</div>
         </div>
         <div style={{background:"rgba(167,139,250,.1)",border:"1.5px solid #ddd6fe",borderRadius:12,padding:"12px 14px"}}>
           <div style={{fontSize:10,color:"var(--tx3)",marginBottom:2}}>Instruksi Aktif</div>
@@ -3978,6 +4937,46 @@ function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,curren
           <div style={{fontSize:10,color:"var(--tx3)"}}>untuk regu ini</div>
         </div>
       </div>
+
+      {/* ALERT OPERASIONAL (tambahan dari dashboard admin) */}
+      {(() => {
+        const pending = (packages||[]).filter(p=>p.status==="Belum Diambil").length;
+        const staying = (guests||[]).filter(g=>g.status==="Masih Ada").length;
+        const todP2 = patrols.filter(p=>new Date(p.ts).toDateString()===now.toDateString()).length;
+        const lastPatrol2 = patrols.filter(p=>new Date(p.ts).toDateString()===now.toDateString()).sort((a,b)=>b.ts-a.ts)[0];
+        const msSincePatrol2 = lastPatrol2 ? now - lastPatrol2.ts : Infinity;
+        const patrolOverdue2 = msSincePatrol2 > 3600000;
+        const alrt = [
+          ...(emptyPos.length>0?[{icon:"🔴",msg:`Pos kosong: ${emptyPos.join(", ")}`,col:"#e53e3e",bg:"rgba(229,62,62,.1)"}]:[]),
+          ...(patrolOverdue2?[{icon:"⚡",msg:todP2===0?"Belum ada patroli hari ini":`Patroli terakhir ${Math.floor(msSincePatrol2/60000)} mnt lalu`,col:"#ff9900",bg:"rgba(255,153,0,.09)"}]:[]),
+        ];
+        return alrt.length>0 ? <SlidingAlertCapsule alerts={alrt} setTab={setTab} /> : null;
+      })()}
+
+      {/* PAKET & TAMU (dari dashboard admin) */}
+      {(packages||guests)&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+          {[
+            {l:"Paket Menunggu",v:(packages||[]).filter(p=>p.status==="Belum Diambil").length,col:"#ff9900",bg:"rgba(255,153,0,.07)",tab:"package"},
+            {l:"Tamu Menginap",v:(guests||[]).filter(g=>g.status==="Masih Ada").length,col:"#a78bfa",bg:"rgba(167,139,250,.08)",tab:"guest"},
+          ].map(c=>(
+            <div key={c.l} onClick={()=>setTab&&setTab(c.tab)} style={{background:"var(--card-solid)",border:`1.5px solid ${c.col}30`,borderRadius:12,padding:"14px 16px",cursor:"pointer",position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",top:0,right:0,width:60,height:60,background:c.col,opacity:.05,borderRadius:"0 12px 0 60px",pointerEvents:"none"}}/>
+              <div className="stat-number" style={{color:c.col,marginTop:4,fontSize:28}}>{c.v}</div>
+              <div className="stat-label">{c.l}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* JADWAL REGU HARI INI (dari dashboard admin) */}
+      {reguHari&&(
+        <div style={{background:"var(--admin-card-bg)",border:"1.5px solid var(--border)",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+          <div style={{fontSize:9,letterSpacing:3,color:"var(--accent)",marginBottom:3}}>JADWAL JAGA HARI INI</div>
+          <div style={{fontSize:20,fontWeight:900,color:"var(--accent-light)",letterSpacing:1}}>{["Min","Sen","Sel","Rab","Kam","Jum","Sab"][now.getDay()].toUpperCase()} — REGU {reguHari}</div>
+          <div style={{fontSize:10,color:"var(--accent)",marginTop:3}}>{REGU[reguHari]?.join(" · ")}</div>
+        </div>
+      )}
 
       {/* GRAFIK PATROLI 7 HARI */}
       <div style={{background:"var(--card-solid)",border:"1px solid var(--border2)",borderRadius:12,padding:"14px",marginBottom:14}}>
@@ -3988,9 +4987,9 @@ function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,curren
             const isToday = i===6;
             return (
               <div key={d.date} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-                <div style={{fontSize:9,fontWeight:800,color:isToday?"var(--accent)":"var(--tx4)"}}>{d.count>0?d.count:""}</div>
+                <div style={{fontSize:9,fontWeight:800,color:isToday?"var(--accent)":"var(--tx3)"}}>{d.count>0?d.count:""}</div>
                 <div style={{width:"100%",height:h,background:isToday?"var(--accent)":"var(--border)",borderRadius:"3px 3px 0 0",transition:"height .4s"}}/>
-                <div style={{fontSize:9,color:isToday?"var(--accent)":"var(--tx4)",fontWeight:isToday?800:400}}>{d.label}</div>
+                <div style={{fontSize:9,color:isToday?"var(--accent)":"var(--tx3)",fontWeight:isToday?800:400}}>{d.label}</div>
               </div>
             );
           })}
@@ -4063,7 +5062,7 @@ function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,curren
 
       {/* INSTRUKSI AKTIF */}
       {visibel.length>0&&(
-        <div style={{background:"var(--card-solid)",border:"1px solid var(--border2)",borderRadius:12,padding:"14px",marginBottom:4}}>
+        <div style={{background:"var(--card-solid)",border:"1px solid var(--border2)",borderRadius:12,padding:"14px",marginBottom:14}}>
           <div style={{fontWeight:800,fontSize:13,color:"var(--tx2)",marginBottom:10}}>📋 Instruksi Aktif ({visibel.length})</div>
           {visibel.map(ins=>{
             const col=ins.prioritas==="Penting"?"#dc2626":ins.prioritas==="Info"?"var(--ok)":"var(--accent)";
@@ -4082,6 +5081,77 @@ function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,curren
         </div>
       )}
 
+      {/* LOG PATROLI LENGKAP (admin/pimpinan) */}
+      <PimpinanPatrolLog patrols={patrols} now={now}/>
+
+    </div>
+  );
+}
+
+// ─── PIMPINAN PATROL LOG ──────────────────────────────────────────────────────
+function PimpinanPatrolLog({patrols, now}) {
+  const [filterDay, setFilterDay] = useState("today");
+  const [viewPhoto, setViewPhoto] = useState(null);
+  const [showAll, setShowAll] = useState(false);
+
+  const filteredPatrols = (() => {
+    if (filterDay === "today") {
+      return patrols.filter(p => new Date(p.ts).toDateString() === now.toDateString());
+    }
+    if (filterDay === "yesterday") {
+      const y = new Date(now); y.setDate(y.getDate()-1);
+      return patrols.filter(p => new Date(p.ts).toDateString() === y.toDateString());
+    }
+    // Last 7 days
+    const cutoff = new Date(now); cutoff.setDate(cutoff.getDate()-7);
+    return patrols.filter(p => new Date(p.ts) >= cutoff);
+  })();
+
+  const displayed = showAll ? filteredPatrols : filteredPatrols.slice(0, 10);
+
+  return (
+    <div className="log-card" style={{padding:"14px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div style={{fontWeight:800,fontSize:13,color:"var(--tx2)"}}>📋 Log Patroli Detail</div>
+        <div style={{display:"flex",gap:5}}>
+          {[["today","Hari Ini"],["yesterday","Kemarin"],["week","7 Hari"]].map(([v,l])=>(
+            <button key={v} onClick={()=>{setFilterDay(v);setShowAll(false);}} style={{fontSize:9.5,fontWeight:700,padding:"3px 8px",borderRadius:6,border:`1px solid ${filterDay===v?"var(--accent)":"var(--border)"}`,background:filterDay===v?"var(--pill-active)":"var(--card)",color:filterDay===v?"var(--accent-light)":"var(--tx3)",cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{fontSize:10.5,color:"var(--tx3)",marginBottom:10}}>{filteredPatrols.length} catatan patroli</div>
+      {filteredPatrols.length===0&&<div style={{fontSize:11,color:"var(--tx3)",textAlign:"center",padding:"16px 0"}}>Belum ada patroli</div>}
+      {[...displayed].reverse().map(p=>(
+        <div key={p.id} style={{padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
+          <div style={{display:"flex",gap:9,alignItems:"flex-start"}}>
+            <div style={{width:32,height:32,background:"var(--green-card)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:15}}>🔍</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12.5,fontWeight:700,color:"var(--tx2)"}}>{p.areas?.join(", ")||"—"}</div>
+              <div style={{fontSize:10.5,color:"var(--tx3)"}}>{p.pos} · 👤 {p.officer||"—"}</div>
+              <div style={{fontSize:10,color:"var(--tx3)"}}>{new Date(p.ts).toLocaleDateString("id-ID",{day:"numeric",month:"short"})} — {fmtT(p.ts)}</div>
+              {p.checks?.length>0&&(
+                <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:4}}>
+                  {p.checks.map(c=>(
+                    <span key={c} style={{fontSize:9,background:"var(--green-card)",border:"1px solid var(--green-border)",borderRadius:4,padding:"1px 5px",color:"var(--ok)",fontWeight:700}}>✓ {c}</span>
+                  ))}
+                </div>
+              )}
+              {p.notes&&<div style={{fontSize:10.5,color:"var(--tx)",marginTop:3}}>📝 {p.notes}</div>}
+            </div>
+            {p.photo&&(
+              <button onClick={()=>setViewPhoto(p.photo)} style={{background:"rgba(167,139,250,.1)",border:"1px solid #c4b5fd",borderRadius:6,padding:"4px 9px",fontSize:10,color:"#a78bfa",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📷 Foto</button>
+            )}
+          </div>
+        </div>
+      ))}
+      {filteredPatrols.length > 10 && !showAll && (
+        <button onClick={()=>setShowAll(true)} style={{width:"100%",marginTop:10,padding:"8px",background:"var(--card2)",border:"1px solid var(--border)",borderRadius:8,color:"var(--accent-light)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+          Lihat Semua ({filteredPatrols.length}) →
+        </button>
+      )}
+      <Modal open={!!viewPhoto} onClose={()=>setViewPhoto(null)} title="Foto Bukti Patroli">
+        {viewPhoto&&<div style={{textAlign:"center"}}><img src={viewPhoto} alt="bukti" style={{width:"100%",maxHeight:400,objectFit:"contain",borderRadius:10,marginBottom:14}}/><Btn onClick={()=>setViewPhoto(null)} color="var(--accent)">Tutup</Btn></div>}
+      </Modal>
     </div>
   );
 }
@@ -4151,24 +5221,24 @@ function InventarisTab({inventarisDaftar, setInventarisDaftar, inventarisCek, se
   const adaMasalah = inventarisDaftar.filter(b => cekHari[b.id]?.status && cekHari[b.id]?.status !== "Lengkap").length;
 
   return (
-    <div style={{padding:"14px 12px",maxWidth:600,margin:"0 auto"}}>
+    <div style={{padding:0}}>
       <PH title="Inventaris Barang" sub="Cek & kelola barang per shift"
         action={isAdmin && <Btn onClick={()=>openEdit(null)} color="var(--accent)" size="sm"><IC n="plus" s={12}/> Tambah</Btn>}
       />
 
       {/* Ringkasan */}
       <div style={{display:"flex",gap:8,marginBottom:14}}>
-        <div style={{flex:1,background:"rgba(0,120,212,.1)",borderRadius:12,padding:"10px 12px",textAlign:"center",border:"1px solid var(--border)"}}>
-          <div style={{fontSize:20,fontWeight:800,color:"var(--accent)"}}>{totalCek}/{inventarisDaftar.length}</div>
-          <div style={{fontSize:11,color:"var(--accent-light)",fontWeight:600}}>Sudah Dicek</div>
+        <div className="stat-tile" style={{flex:1,background:"rgba(0,120,212,.1)",borderColor:"rgba(0,120,212,.18)"}}>
+          <div className="stat-tile-number" style={{color:"var(--accent)"}}>{totalCek}/{inventarisDaftar.length}</div>
+          <div className="stat-tile-label" style={{color:"var(--accent-light)"}}>Sudah Dicek</div>
         </div>
-        <div style={{flex:1,background: adaMasalah>0?"rgba(255,50,50,.1)":"var(--green-card)",borderRadius:12,padding:"10px 12px",textAlign:"center",border:`1.5px solid ${adaMasalah>0?"rgba(255,50,50,.3)":"var(--green-border)"}`}}>
-          <div style={{fontSize:20,fontWeight:800,color: adaMasalah>0?"#dc2626":"var(--ok)"}}>{adaMasalah}</div>
-          <div style={{fontSize:11,color: adaMasalah>0?"#dc2626":"var(--ok)",fontWeight:600}}>Ada Masalah</div>
+        <div className="stat-tile" style={{flex:1,background: adaMasalah>0?"rgba(255,50,50,.1)":"var(--green-card)",borderColor: adaMasalah>0?"rgba(255,50,50,.3)":"var(--green-border)"}}>
+          <div className="stat-tile-number" style={{color: adaMasalah>0?"#dc2626":"var(--ok)"}}>{adaMasalah}</div>
+          <div className="stat-tile-label" style={{color: adaMasalah>0?"#dc2626":"var(--ok)"}}>Ada Masalah</div>
         </div>
-        <div style={{flex:1,background:"var(--card-solid)",borderRadius:12,padding:"10px 12px",textAlign:"center",border:"1px solid var(--border2)"}}>
+        <div className="stat-tile" style={{flex:1}}>
           <div style={{fontSize:14,fontWeight:800,color:"var(--tx)"}}>{now.toLocaleDateString("id-ID",{day:"numeric",month:"short"})}</div>
-          <div style={{fontSize:11,color:"var(--tx3)",fontWeight:600}}>Tanggal Cek</div>
+          <div className="stat-tile-label" style={{color:"var(--tx3)"}}>Tanggal Cek</div>
         </div>
       </div>
 
@@ -4178,7 +5248,7 @@ function InventarisTab({inventarisDaftar, setInventarisDaftar, inventarisCek, se
           const cek = cekHari[b.id] || {};
           const hasStatus = !!cek.status;
           return (
-            <div key={b.id} style={{background:"var(--card-solid)",borderRadius:14,border:`1.5px solid ${hasStatus ? (STATUS_COLOR[cek.status]+"33") : "var(--border)"}`,padding:"12px 14px",boxShadow:"0 1px 4px rgba(30,58,138,.06)"}}>
+            <div key={b.id} className="inv-card" style={{borderColor: hasStatus ? (STATUS_COLOR[cek.status]+"33") : "var(--border)"}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom: hasStatus?8:0}}>
                 <div style={{width:28,height:28,borderRadius:8,background:"rgba(0,120,212,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"var(--accent)",fontSize:12,flexShrink:0}}>{i+1}</div>
                 <div style={{flex:1}}>
@@ -4204,10 +5274,10 @@ function InventarisTab({inventarisDaftar, setInventarisDaftar, inventarisCek, se
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   {STATUS_OPTS.map(s => (
                     <button key={s} onClick={()=>setCekStatus(b.id,s)}
-                      style={{flex:1,minWidth:70,padding:"6px 4px",borderRadius:8,border:`1.5px solid ${cek.status===s ? STATUS_COLOR[s] : "var(--border)"}`,
+                      style={{flex:1,minWidth:70,padding:"6px 4px",borderRadius:8,border:`1.5px solid ${cek.status===s ? STATUS_COLOR[s] : "var(--border2)"}`,
                         background: cek.status===s ? STATUS_BG[s] : "var(--card-solid)",
-                        color: cek.status===s ? STATUS_COLOR[s] : "var(--tx4)",
-                        fontWeight: cek.status===s ? 700 : 500,
+                        color: cek.status===s ? STATUS_COLOR[s] : "var(--tx2)",
+                        fontWeight: cek.status===s ? 700 : 600,
                         fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
                       {s}
                     </button>
@@ -4246,7 +5316,7 @@ function InventarisTab({inventarisDaftar, setInventarisDaftar, inventarisCek, se
           </div>
           <div style={{display:"flex",gap:8,marginTop:4}}>
             <Btn onClick={saveEdit} color="var(--accent)" size="lg" style={{flex:1}}>Simpan</Btn>
-            <Btn onClick={()=>setEditOpen(false)} color="var(--tx4)" variant="outline" size="lg" style={{flex:1}}>Batal</Btn>
+            <Btn onClick={()=>setEditOpen(false)} color="var(--tx3)" variant="outline" size="lg" style={{flex:1}}>Batal</Btn>
           </div>
         </div>
       </Modal>
@@ -4280,7 +5350,7 @@ function SearchTab({ packages, guests, mutations, incidents, patrols }) {
       guests.forEach(g => {
         const hit = [g.name, g.institution, g.purpose, g.room, g.vehicle]
           .filter(Boolean).some(v => v.toLowerCase().includes(q));
-        if (hit) out.push({ kind: "tamu", icon: "👤", title: g.name, sub: `${g.institution || ""}${g.vehicle ? " · 🚗 " + g.vehicle : ""}${g.room ? " · " + g.room : ""}`, status: g.status, ts: g.ts, color: g.status === "Masih Ada" ? "#b39dfa" : "var(--tx4)", badge: g.status });
+        if (hit) out.push({ kind: "tamu", icon: "👤", title: g.name, sub: `${g.institution || ""}${g.vehicle ? " · 🚗 " + g.vehicle : ""}${g.room ? " · " + g.room : ""}`, status: g.status, ts: g.ts, color: g.status === "Masih Ada" ? "#b39dfa" : "var(--tx3)", badge: g.status });
       });
     }
 
@@ -4297,7 +5367,7 @@ function SearchTab({ packages, guests, mutations, incidents, patrols }) {
       incidents.forEach(i => {
         const hit = [i.title, i.desc, i.location, i.reportedBy]
           .filter(Boolean).some(v => v.toLowerCase().includes(q));
-        if (hit) out.push({ kind: "insiden", icon: "⚠️", title: i.title || "Insiden", sub: `${i.location || ""}${i.reportedBy ? " · " + i.reportedBy : ""}`, status: i.status, ts: i.ts, color: i.status === "Selesai" ? "var(--tx4)" : "#ff4444", badge: i.status });
+        if (hit) out.push({ kind: "insiden", icon: "⚠️", title: i.title || "Insiden", sub: `${i.location || ""}${i.reportedBy ? " · " + i.reportedBy : ""}`, status: i.status, ts: i.ts, color: i.status === "Selesai" ? "var(--tx3)" : "#ff4444", badge: i.status });
       });
     }
 
@@ -4364,7 +5434,7 @@ function SearchTab({ packages, guests, mutations, incidents, patrols }) {
 
       {/* Results */}
       {!q && (
-        <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--tx4)" }}>
+        <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--tx3)" }}>
           <div style={{ fontSize: 36, marginBottom: 10 }}>🔍</div>
           <div style={{ fontSize: 13, fontWeight: 700 }}>Mulai ketik untuk mencari</div>
           <div style={{ fontSize: 11.5, marginTop: 6, color: "#3a6a4e" }}>Tamu · Paket · Kendaraan · Insiden</div>
@@ -4372,7 +5442,7 @@ function SearchTab({ packages, guests, mutations, incidents, patrols }) {
       )}
 
       {q && results.length === 0 && (
-        <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--tx4)" }}>
+        <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--tx3)" }}>
           <div style={{ fontSize: 36, marginBottom: 10 }}>😕</div>
           <div style={{ fontSize: 13, fontWeight: 700 }}>Tidak ditemukan</div>
           <div style={{ fontSize: 11.5, marginTop: 6 }}>Coba kata kunci lain</div>
@@ -4400,7 +5470,7 @@ function SearchTab({ packages, guests, mutations, incidents, patrols }) {
                 )}
               </div>
               {r.sub && <div style={{ fontSize: 11.5, color: "var(--tx3)", paddingLeft: 25 }}>{r.sub}</div>}
-              <div style={{ fontSize: 10.5, color: "var(--tx4)", paddingLeft: 25, marginTop: 2 }}>{fmtDT(r.ts)}</div>
+              <div style={{ fontSize: 10.5, color: "var(--tx3)", paddingLeft: 25, marginTop: 2 }}>{fmtDT(r.ts)}</div>
             </div>
           ))}
         </>
@@ -4527,15 +5597,15 @@ function KeluarTab({ keluarData, setKeluarData, toast, canEdit, isAdmin, now }) 
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
                   <div style={{fontSize:13,fontWeight:700,color:"var(--tx2)"}}>{k.nama}</div>
-                  {k.plat && <div style={{fontSize:11,color:"var(--tx4)"}}>🚗 {k.plat.toUpperCase()}</div>}
+                  {k.plat && <div style={{fontSize:11,color:"var(--tx3)"}}>🚗 {k.plat.toUpperCase()}</div>}
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:10,color:"var(--tx4)"}}>Keluar {fmtT(k.tsKeluar)}</div>
+                  <div style={{fontSize:10,color:"var(--tx3)"}}>Keluar {fmtT(k.tsKeluar)}</div>
                   <div style={{fontSize:10.5,color:"var(--ok)",fontWeight:700}}>
                     ✓ Kembali {fmtT(k.tsKembali)}
                   </div>
                   {isAdmin && (
-                    <button onClick={() => hapus(k.id)} style={{marginTop:4,background:"none",border:"none",fontSize:10,color:"var(--tx4)",cursor:"pointer",fontFamily:"inherit"}}>Hapus</button>
+                    <button onClick={() => hapus(k.id)} style={{marginTop:4,background:"none",border:"none",fontSize:10,color:"var(--tx3)",cursor:"pointer",fontFamily:"inherit"}}>Hapus</button>
                   )}
                 </div>
               </div>
@@ -4558,7 +5628,7 @@ function KeluarTab({ keluarData, setKeluarData, toast, canEdit, isAdmin, now }) 
         <Inp label="Plat Nomor Kendaraan (opsional)" value={fm.plat} onChange={e=>f("plat",e.target.value.toUpperCase())} placeholder="Contoh: D 1234 ABC"/>
         <div style={{display:"flex",gap:8}}>
           <Btn onClick={submit} color="var(--y)" sx={{color:"#1a1a1a"}} size="lg">Simpan</Btn>
-          <Btn onClick={() => setOpen(false)} color="var(--tx4)" variant="outline" size="lg">Batal</Btn>
+          <Btn onClick={() => setOpen(false)} color="var(--tx3)" variant="outline" size="lg">Batal</Btn>
         </div>
       </Modal>
     </div>
@@ -4569,7 +5639,6 @@ const NAV_TABS = [
   {id:"dashboard",label:"Dashboard",icon:"home"},
   {id:"search",label:"Cari",icon:"search"},
   {id:"patrol",label:"Patroli",icon:"qr"},
-  {id:"incident",label:"Insiden",icon:"alert"},
   {id:"more",label:"Lainnya",icon:"menu"},
 ];
 
@@ -4584,7 +5653,7 @@ const NAV_TABS_ADMIN = [
 // ═══════════════════════════════════════════════════════════════════════════════
 // RESET DATA LAMA — jalankan sekali saat versi baru pertama kali dibuka
 // ═══════════════════════════════════════════════════════════════════════════════
-const APP_VERSION = "v2.1-clean-4"; // ganti versi ini untuk trigger reset ulang
+const APP_VERSION = "v2.2-update-1"; // ganti versi ini untuk trigger reset ulang
 (function clearOldData() {
   if (localStorage.getItem("pad_app_version") === APP_VERSION) return;
   const KEEP = ["pad_theme", "pad_pins", "pad_admin_pin", "pad_app_version"];
@@ -4605,8 +5674,10 @@ function App() {
   const [tabKey, setTabKey] = useState(0);
   const [now, setNow] = useState(new Date());
   const [moreOpen, setMoreOpen] = useState(false);
+  const [changePinOpen, setChangePinOpen] = useState(false);
   const [fbOnline, setFbOnline] = useState(false);
   const [theme, setTheme] = useLS("pad_theme", "dark");
+  const [accentColor, setAccentColor] = useLS("pad_accent", "blue");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
 
@@ -4616,6 +5687,13 @@ function App() {
     if (theme === "light") root.classList.add("light");
     else root.classList.remove("light");
   }, [theme]);
+
+  // Apply accent color class
+  useEffect(() => {
+    const root = document.documentElement;
+    ["blue","green","purple","red","orange","teal"].forEach(c => root.classList.remove("accent-"+c));
+    root.classList.add("accent-" + accentColor);
+  }, [accentColor]);
 
   // toggleTheme: use direct value (useLS does not support functional updater)
   const inactiveTimer = useRef(null);
@@ -4689,6 +5767,18 @@ function App() {
   const [guests, setGuests] = useData("pad_guest", []);
   const [patrols, setPatrols] = usePatrols();
   const [mutations, setMutations] = useData("pad_mut", []);
+
+  // ─── AUTO-CLEAR PATROLI saat ganti regu (jam 06:00) ─────────────────────────
+  // Simpan reguHari terakhir di localStorage; jika berubah, hapus log patroli
+  useEffect(() => {
+    const stored = localStorage.getItem("pad_last_regu_day");
+    const currentReguDay = getReguHari(new Date()) + "_" + new Date().toISOString().slice(0, 10);
+    if (stored && stored !== currentReguDay) {
+      // Regu baru – bersihkan riwayat patroli
+      setPatrols([]);
+    }
+    localStorage.setItem("pad_last_regu_day", currentReguDay);
+  }, [reguHari]); // eslint-disable-line
   const [standJaga, setStandJaga] = useData("pad_stand", []);
   const [posRollingLog, setPosRollingLog] = useData("pad_posroll", []);
   const [rollings, setRollings] = useData("pad_rolling", []);
@@ -4698,6 +5788,7 @@ function App() {
   const [inventarisDaftar, setInventarisDaftar] = useData("pad_inv_daftar", DEFAULT_INVENTARIS);
   const [inventarisCek, setInventarisCek] = useData("pad_inv_cek", {});
   const [keluarData, setKeluarData] = useData("pad_keluar", []);
+  const [statusPimpinan, setStatusPimpinan] = useData("pad_pimpinan_status", { hadir: true, updatedAt: null, updatedBy: null });
   const [notif, setNotif] = useState(null);
 
   const toast = (msg, ok = true) => { setNotif({ msg, ok }); setTimeout(() => setNotif(null), 3000); };
@@ -4709,6 +5800,28 @@ function App() {
     setTab("dashboard");
   };
 
+  // ── Ganti PIN (App level agar bisa dibuka dari drawer Lainnya) ──
+  const [cpOldPin, setCpOldPin] = useState("");
+  const [cpNewPin, setCpNewPin] = useState("");
+  const [cpConfPin, setCpConfPin] = useState("");
+  const handleChangePin = async () => {
+    if (!currentUser) return;
+    const name = currentUser.name;
+    let freshPins = { ...DEFAULT_PINS };
+    try { const s = localStorage.getItem("pad_pins"); if (s) freshPins = { ...DEFAULT_PINS, ...JSON.parse(s) }; } catch {}
+    let correctOld = await getPinFromFS(name).catch(() => null);
+    if (!correctOld) correctOld = (freshPins[name] || "123456").trim();
+    if (cpOldPin.trim() !== correctOld) { toast("PIN lama salah! (default: 123456)", false); return; }
+    if (cpNewPin.trim().length !== 6 || !/^\d{6}$/.test(cpNewPin.trim())) { toast("PIN baru harus 6 angka!", false); return; }
+    if (cpNewPin.trim() !== cpConfPin.trim()) { toast("Konfirmasi PIN tidak cocok!", false); return; }
+    await savePinToFS(name, cpNewPin.trim()).catch(() => {});
+    const updated = { ...freshPins, [name]: cpNewPin.trim() };
+    setUserPins(updated);
+    auditAction(name, currentUser.regu, "GANTI_PIN", "PIN berhasil diubah");
+    setChangePinOpen(false); setCpOldPin(""); setCpNewPin(""); setCpConfPin("");
+    toast("PIN berhasil diubah!");
+  };
+
   if (!currentUser) return <LoginScreen onLogin={handleLogin} userPins={userPins} />;
 
   const isAdmin = currentUser.isAdmin;
@@ -4717,18 +5830,19 @@ function App() {
   const ACTIVE_NAV = isAdmin ? NAV_TABS_ADMIN : NAV_TABS;
 
   const MORE_TABS = isAdmin ? [
-    {id:"instruksi", label:"Instruksi Pimpinan", icon:"shield"},
-    {id:"pimpinan", label:"Dashboard Pimpinan", icon:"home"},
-    { id: "absen", label: "Absensi", icon: "cal" },
-    { id: "mutation", label: "Mutasi Laporan", icon: "file" },
-    { id: "inventaris", label: "Inventaris Barang", icon: "pkg" },
-    { id: "profile", label: "Admin", icon: "ppl" },
+    { id: "profile",      label: "Profil",      icon: "ppl",  color: "var(--cb-green)",  glow: "var(--cb-green-glow)" },
+    { id: "mutation",     label: "Mutasi",      icon: "file", color: "var(--cb-blue)",   glow: "var(--cb-blue-glow)" },
+    { id: "inventaris",   label: "Inventaris",  icon: "pkg",  color: "var(--cb-yellow)", glow: "var(--cb-yellow-glow)" },
+    { id: "accentPicker", label: "Warna Tema",  icon: "star", isAccent: true },
+    { id: "changePin",    label: "Ganti PIN",   icon: "key",  isPin: true },
+    { id: "logoutItem",   label: "Logout",      icon: "out",  isLogout: true },
   ] : [
-    {id:"instruksi", label:"Instruksi Pimpinan", icon:"shield"},
-    { id: "keluar", label: "Peserta Keluar", icon: "ppl" },
-    { id: "mutation", label: "Mutasi Laporan", icon: "file" },
-    { id: "inventaris", label: "Inventaris Barang", icon: "pkg" },
-    { id: "profile", label: "Profil Saya", icon: "ppl" },
+    { id: "profile",      label: "Profil Saya", icon: "ppl",  color: "var(--cb-green)",  glow: "var(--cb-green-glow)" },
+    { id: "mutation",     label: "Mutasi",      icon: "file", color: "var(--cb-blue)",   glow: "var(--cb-blue-glow)" },
+    { id: "inventaris",   label: "Inventaris",  icon: "pkg",  color: "var(--cb-yellow)", glow: "var(--cb-yellow-glow)" },
+    { id: "accentPicker", label: "Warna Tema",  icon: "star", isAccent: true },
+    { id: "changePin",    label: "Ganti PIN",   icon: "key",  isPin: true },
+    { id: "logoutItem",   label: "Logout",      icon: "out",  isLogout: true },
   ];
 
   const pending = packages.filter(p => p.status === "Belum Diambil").length;
@@ -4766,7 +5880,7 @@ function App() {
         {activeI > 0 && <div className="badge-bounce" style={{ background: "var(--r)", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10.5, fontWeight: 700 }}><span className="icon-shake">⚠</span>{activeI}</div>}
         <div style={{ textAlign: "right", cursor: "pointer" }} onClick={() => goTab("profile")}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--tx)" }}>{currentUser.name}</div>
-          <div style={{ fontSize: 8.5, color: "var(--tx3)" }}>{fmtDS(now)} · {isAdmin ? "Admin" : `Regu ${reguHari}`} · <span style={{color:fbOnline?"var(--ok)":"var(--r)",fontSize:10,transition:"color .5s"}}>●</span></div>
+          <div style={{ fontSize: 8.5, color: "var(--tx3)" }}>{fmtDS(now)} · {isAdmin ? "Pimpinan" : `Regu ${reguHari}`} · <span style={{color:fbOnline?"var(--ok)":"var(--r)",fontSize:10,transition:"color .5s"}}>●</span></div>
         </div>
       </header>
 
@@ -4778,17 +5892,59 @@ function App() {
         <div style={{ position: "fixed", inset: 0, zIndex: 500, background: "var(--scrim)", backdropFilter: "blur(4px)" }} onClick={() => setMoreOpen(false)}>
           <div style={{ position: "absolute", bottom: 64, left: 0, right: 0, background: "var(--mica-bg)", backdropFilter: "blur(24px) saturate(1.5)", borderTop: "1px solid var(--border)", borderRadius: "16px 16px 0 0", padding: "14px 14px 10px" }} onClick={e => e.stopPropagation()}>
             <div style={{ width: 32, height: 3, background: "var(--border2)", borderRadius: 4, margin: "0 auto 14px" }} />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-              {MORE_TABS.map(t => (
-                <button key={t.id} onClick={() => goTab(t.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", background: tab === t.id ? "var(--pill-active)" : "var(--card)", border: `1px solid ${tab === t.id ? "var(--accent)" : "var(--border)"}`, borderRadius: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "left", transition: "all .1s" }}>
-                  <IC n={t.icon} s={17} c={tab === t.id ? "var(--accent-light)" : "var(--tx3)"} />
-                  <span style={{ fontSize: 12, fontWeight: 600, color: tab === t.id ? "var(--accent-light)" : "var(--tx2)" }}>{t.label}</span>
-                </button>
-              ))}
+            {/* 3×2 Grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7 }}>
+              {MORE_TABS.map(t => {
+                if (t.isLogout) return (
+                  <button key="logoutItem" onClick={() => { setMoreOpen(false); handleLogout(); }} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "12px 8px", background: "rgba(220,38,38,.08)", border: "1.5px solid rgba(220,38,38,.55)", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", transition: "all .1s", boxShadow: "0 0 8px rgba(220,38,38,.18)", position: "relative", overflow: "hidden" }}>
+                    <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,rgba(220,38,38,.8),transparent)",borderRadius:"10px 10px 0 0",pointerEvents:"none"}}/>
+                    <IC n="out" s={17} c="#dc2626" />
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "#dc2626" }}>Logout</span>
+                  </button>
+                );
+                if (t.isAccent) return (
+                  <button key="accentPicker" onClick={() => setSettingsOpen(true)} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "12px 8px", background: "rgba(167,139,250,.08)", border: "1.5px solid rgba(167,139,250,.55)", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", transition: "all .1s", boxShadow: "0 0 8px rgba(167,139,250,.18)", position: "relative", overflow: "hidden" }}>
+                    <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,rgba(167,139,250,.8),transparent)",borderRadius:"10px 10px 0 0",pointerEvents:"none"}}/>
+                    <span style={{ fontSize: 17 }}>🎨</span>
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--tx2)" }}>Warna Tema</span>
+                  </button>
+                );
+                if (t.isPin) return (
+                  <button key="changePin" onClick={() => { setMoreOpen(false); setChangePinOpen(true); }} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "12px 8px", background: "rgba(196,154,60,.08)", border: "1.5px solid rgba(196,154,60,.55)", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", transition: "all .1s", boxShadow: "0 0 8px rgba(196,154,60,.18)", position: "relative", overflow: "hidden" }}>
+                    <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,rgba(196,154,60,.8),transparent)",borderRadius:"10px 10px 0 0",pointerEvents:"none"}}/>
+                    <span style={{ fontSize: 17 }}>🔑</span>
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--tx2)" }}>Ganti PIN</span>
+                  </button>
+                );
+                const active = tab === t.id;
+                const cardColor = t.color || "var(--cb-blue)";
+                const cardGlow = t.glow || "var(--cb-blue-glow)";
+                return (
+                  <button key={t.id} onClick={() => goTab(t.id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "12px 8px", background: active ? "var(--pill-active)" : "var(--card)", border: `1.5px solid ${active ? "var(--accent)" : cardColor}`, borderRadius: 10, cursor: "pointer", fontFamily: "inherit", transition: "all .18s", boxShadow: `0 0 ${active ? 14 : 8}px ${active ? "var(--cb-teal-glow)" : cardGlow}`, position: "relative", overflow: "hidden" }}>
+                    <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${active?"var(--accent)":cardColor},transparent)`,borderRadius:"10px 10px 0 0",pointerEvents:"none"}}/>
+                    <IC n={t.icon} s={17} c={active ? "var(--accent-light)" : "var(--tx3)"} />
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: active ? "var(--accent-light)" : "var(--tx2)" }}>{t.label}</span>
+                  </button>
+                );
+              })}
             </div>
+
+
+
           </div>
         </div>
       )}
+
+      {/* MODAL GANTI PIN */}
+      <Modal open={changePinOpen} onClose={() => { setChangePinOpen(false); setCpOldPin(""); setCpNewPin(""); setCpConfPin(""); }} title="Ganti PIN">
+        <Inp label="PIN Lama" value={cpOldPin} onChange={e => setCpOldPin(e.target.value.replace(/[^0-9]/g,"").slice(0,6))} type="tel" placeholder="Ketik 6 angka" />
+        <Inp label="PIN Baru (6 digit)" value={cpNewPin} onChange={e => setCpNewPin(e.target.value.replace(/[^0-9]/g,"").slice(0,6))} type="tel" placeholder="Ketik 6 angka" />
+        <Inp label="Konfirmasi PIN Baru" value={cpConfPin} onChange={e => setCpConfPin(e.target.value.replace(/[^0-9]/g,"").slice(0,6))} type="tel" placeholder="Ulangi PIN baru" />
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn onClick={handleChangePin} color="#a78bfa" size="lg">Simpan</Btn>
+          <Btn onClick={() => { setChangePinOpen(false); setCpOldPin(""); setCpNewPin(""); setCpConfPin(""); }} color="var(--tx3)" variant="outline" size="lg">Batal</Btn>
+        </div>
+      </Modal>
 
       {/* SETTINGS DRAWER */}
       {settingsOpen && (
@@ -4809,11 +5965,41 @@ function App() {
               </div>
             </div>
 
+            {/* Accent color picker */}
+            <div style={{marginBottom:18}}>
+              <div style={{fontSize:10,fontWeight:700,color:"var(--tx3)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>Warna Tema</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8}}>
+                {[
+                  {id:"blue",   hex:"#4169E1", label:"Royal Blue"},
+                  {id:"green",  hex:"#10b981", label:"Emerald"},
+                  {id:"purple", hex:"#6366f1", label:"Indigo"},
+                  {id:"red",    hex:"#c0392b", label:"Crimson"},
+                  {id:"orange", hex:"#d4a017", label:"Gold"},
+                  {id:"teal",   hex:"#64748b", label:"Slate"},
+                ].map(c=>(
+                  <button key={c.id} onClick={()=>setAccentColor(c.id)} title={c.label} style={{
+                    width:"100%",aspectRatio:"1",borderRadius:"50%",
+                    background:c.hex,
+                    border: accentColor===c.id ? `3px solid ${c.hex}` : "3px solid transparent",
+                    outline: accentColor===c.id ? `2px solid var(--tx)` : "2px solid transparent",
+                    outlineOffset:2,
+                    cursor:"pointer",
+                    transition:"all .2s",
+                    transform: accentColor===c.id ? "scale(1.18)" : "scale(1)",
+                    boxShadow: accentColor===c.id ? `0 0 12px ${c.hex}80` : "none",
+                  }}/>
+                ))}
+              </div>
+              <div style={{textAlign:"center",marginTop:8,fontSize:11,color:"var(--tx3)"}}>
+                {["Royal Blue","Emerald","Indigo","Crimson","Gold","Slate"][["blue","green","purple","red","orange","teal"].indexOf(accentColor)]}
+              </div>
+            </div>
+
             {/* App info */}
             <div style={{background:"var(--card2)",borderRadius:10,padding:"12px 14px"}}>
               <div style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Tentang Aplikasi</div>
               <div style={{fontSize:12,color:"var(--tx3)"}}>SIPAMDAL — Sistem Informasi Pengamanan Dalam</div>
-              <div style={{fontSize:11,color:"var(--tx4)",marginTop:4}}>BBPKA II Jatinangor · v2.0 Tactical</div>
+              <div style={{fontSize:11,color:"var(--tx3)",marginTop:4}}>BBPKA II Jatinangor · v2.0 Tactical</div>
             </div>
 
             <button onClick={() => setSettingsOpen(false)} style={{marginTop:16,width:"100%",padding:"10px 0",background:"var(--card)",border:"1px solid var(--border2)",borderRadius:10,color:"var(--tx3)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Tutup</button>
@@ -4827,8 +6013,9 @@ function App() {
       <main style={{ flex: 1, padding: "14px 14px 0", overflowY: "auto" }}>
         <div key={tabKey} className="tab-view">
         {tab === "search" && <SearchTab packages={packages} guests={guests} mutations={mutations} incidents={incidents} patrols={patrols} />}
-        {tab === "pimpinan" && <PimpinanTab now={now} patrols={patrols} incidents={incidents} posAssign={posAssign} instruksi={instruksi} mutations={mutations} currentUser={currentUser} />}
-        {tab === "dashboard" && <DashTab now={now} shift={shift} reguHari={reguHari} posAssign={posAssign} incidents={incidents} packages={packages} guests={guests} patrols={patrols} standJaga={standJaga} mutations={mutations} posRollingLog={posRollingLog} liburData={liburData} setLiburData={setLiburData} instruksi={instruksi} currentUser={currentUser} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} />}
+        {tab === "pimpinan" && <PimpinanTab now={now} patrols={patrols} incidents={incidents} posAssign={posAssign} instruksi={instruksi} mutations={mutations} currentUser={currentUser} packages={packages} guests={guests} reguHari={reguHari} liburData={liburData} setLiburData={setLiburData} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} statusPimpinan={statusPimpinan} setStatusPimpinan={setStatusPimpinan} toast={toast} />}
+        {tab === "dashboard" && !isAdmin && <DashTab now={now} shift={shift} reguHari={reguHari} posAssign={posAssign} incidents={incidents} packages={packages} guests={guests} patrols={patrols} standJaga={standJaga} mutations={mutations} posRollingLog={posRollingLog} liburData={liburData} setLiburData={setLiburData} instruksi={instruksi} currentUser={currentUser} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} keluarData={keluarData} statusPimpinan={statusPimpinan} setStatusPimpinan={setStatusPimpinan} toast={toast} />}
+        {tab === "dashboard" && isAdmin && <PimpinanTab now={now} patrols={patrols} incidents={incidents} posAssign={posAssign} instruksi={instruksi} mutations={mutations} currentUser={currentUser} packages={packages} guests={guests} reguHari={reguHari} liburData={liburData} setLiburData={setLiburData} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} statusPimpinan={statusPimpinan} setStatusPimpinan={setStatusPimpinan} toast={toast} />}
         {tab === "jadwal" && <JadwalTab now={now} liburData={liburData} isAdmin={isAdmin} setTab={setTab} />}
         {tab === "pos" && <PosTab reguHari={reguHari} posAssign={posAssign} setPosAssign={setPosAssign} posRollingLog={posRollingLog} setPosRollingLog={setPosRollingLog} toast={toast} canEdit={canEdit} isAdmin={isAdmin} currentUser={currentUser} />}
         {tab === "stand" && <StandTab standJaga={standJaga} setStandJaga={setStandJaga} posAssign={posAssign} reguHari={reguHari} toast={toast} canEdit={canEdit} currentUser={currentUser} />}
@@ -4840,22 +6027,55 @@ function App() {
         {tab === "mutation" && <MutTab mutations={mutations} setMutations={setMutations} reguHari={reguHari} toast={toast} canEdit={canEdit} patrols={patrols} incidents={incidents} packages={packages} guests={guests} currentUser={currentUser} standJaga={standJaga} rollings={rollings} inventarisDaftar={inventarisDaftar} inventarisCek={inventarisCek} />}
         {tab === "absen" && <AbsenTab absen={absen} setAbsen={setAbsen} liburData={liburData} setLiburData={setLiburData} reguHari={reguHari} toast={toast} canEdit={canEdit} isAdmin={isAdmin} now={now} />}
         {tab === "instruksi" && <InstruksiTab instruksi={instruksi} setInstruksi={setInstruksi} toast={toast} isAdmin={isAdmin} currentUser={currentUser} />}
-        {tab === "profile" && <ProfileTab currentUser={currentUser} patrols={patrols} standJaga={standJaga} incidents={incidents} mutations={mutations} onLogout={handleLogout} toast={toast} userPins={userPins} setUserPins={setUserPins} />}
+        {tab === "profile" && <ProfileTab currentUser={currentUser} patrols={patrols} standJaga={standJaga} incidents={incidents} mutations={mutations} onLogout={handleLogout} toast={toast} userPins={userPins} setUserPins={setUserPins} changePinOpen={changePinOpen} setChangePinOpen={setChangePinOpen} />}
         {tab === "members" && <AdminMemberTab patrols={patrols} standJaga={standJaga} incidents={incidents} mutations={mutations} />}
         {tab === "inventaris" && <InventarisTab inventarisDaftar={inventarisDaftar} setInventarisDaftar={setInventarisDaftar} inventarisCek={inventarisCek} setInventarisCek={setInventarisCek} toast={toast} isAdmin={isAdmin} canEdit={canEdit} now={now} />}
         </div>
       </main>
 
       {/* BOTTOM NAV */}
-      <nav style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 300, background: "var(--mica-bg)", backdropFilter: "blur(20px) saturate(1.4)", borderTop: "1px solid var(--border)", display: "flex", height: 60, boxShadow: "0 -1px 0 var(--border)" }}>
-        {ACTIVE_NAV.map(t => {
+      <nav style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 300, background: "var(--mica-bg)", backdropFilter: "blur(20px) saturate(1.4)", borderTop: "1px solid var(--border)", display: "flex", height: 60, alignItems: "center", boxShadow: "0 -1px 0 var(--border)" }}>
+        {ACTIVE_NAV.slice(0, Math.floor(ACTIVE_NAV.length / 2)).map(t => {
           const active = t.id === "more" ? moreOpen : tab === t.id;
           return (
-            <button key={t.id} onClick={() => { if (t.id === "more") { setMoreOpen(v => !v); setFabOpen(false); } else { setTab(t.id); setMoreOpen(false); setFabOpen(false); } }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: active ? "var(--pill-active)" : "none", border: "none", cursor: "pointer", color: active ? "var(--accent-light)" : "var(--tx2)", transition: "all .15s", fontFamily: "inherit", position: "relative", margin: "5px 3px", borderRadius: 9 }}>
+            <button key={t.id} onClick={() => { if (t.id === "more") { setMoreOpen(v => !v); setFabOpen(false); } else { setTab(t.id); setMoreOpen(false); setFabOpen(false); } }}
+              style={{
+                flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+                justifyContent: "center", gap: 3,
+                background: active ? "rgba(76,175,130,.10)" : "none",
+                border: "none", cursor: "pointer",
+                color: active ? "#4caf82" : "var(--tx2)",
+                transition: "all .18s cubic-bezier(.22,1,.36,1)",
+                fontFamily: "inherit", position: "relative",
+                margin: "5px 3px", borderRadius: 9,
+              }}>
               {t.id === "incident" && activeI > 0 && <div className="nav-badge-ping" style={{ position: "absolute", top: 4, right: "calc(50% - 16px)", minWidth: 16, height: 16, background: "var(--r)", borderRadius: 8, fontSize: 9, color: "#fff", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>{activeI}</div>}
-              <IC n={t.icon} s={20} c={active ? "var(--accent-light)" : "var(--tx2)"} />
-              <span style={{ fontSize: 9.5, fontWeight: active ? 700 : 500 }}>{t.label}</span>
-              {active && t.id !== "more" && <div style={{ position: "absolute", top: 0, left: "30%", right: "30%", height: 2, background: "var(--accent-light)", borderRadius: "0 0 2px 2px" }} />}
+              <IC n={t.icon} s={20} c={active ? "#4caf82" : "var(--tx2)"} />
+              <span style={{ fontSize: 9.5, fontWeight: active ? 800 : 500, letterSpacing: active ? .2 : 0 }}>{t.label}</span>
+              {/* Indikator active — garis hijau bukan biru */}
+              {active && t.id !== "more" && <div style={{ position: "absolute", top: 0, left: "25%", right: "25%", height: 2.5, background: "linear-gradient(90deg,#4caf82,#80e0b0)", borderRadius: "0 0 3px 3px", boxShadow: "0 0 8px #4caf8288" }} />}
+            </button>
+          );
+        })}
+
+        {ACTIVE_NAV.slice(Math.floor(ACTIVE_NAV.length / 2)).map(t => {
+          const active = t.id === "more" ? moreOpen : tab === t.id;
+          return (
+            <button key={t.id} onClick={() => { if (t.id === "more") { setMoreOpen(v => !v); setFabOpen(false); } else { setTab(t.id); setMoreOpen(false); setFabOpen(false); } }}
+              style={{
+                flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+                justifyContent: "center", gap: 3,
+                background: active ? "rgba(76,175,130,.10)" : "none",
+                border: "none", cursor: "pointer",
+                color: active ? "#4caf82" : "var(--tx2)",
+                transition: "all .18s cubic-bezier(.22,1,.36,1)",
+                fontFamily: "inherit", position: "relative",
+                margin: "5px 3px", borderRadius: 9,
+              }}>
+              {t.id === "incident" && activeI > 0 && <div className="nav-badge-ping" style={{ position: "absolute", top: 4, right: "calc(50% - 16px)", minWidth: 16, height: 16, background: "var(--r)", borderRadius: 8, fontSize: 9, color: "#fff", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>{activeI}</div>}
+              <IC n={t.icon} s={20} c={active ? "#4caf82" : "var(--tx2)"} />
+              <span style={{ fontSize: 9.5, fontWeight: active ? 800 : 500, letterSpacing: active ? .2 : 0 }}>{t.label}</span>
+              {active && t.id !== "more" && <div style={{ position: "absolute", top: 0, left: "25%", right: "25%", height: 2.5, background: "linear-gradient(90deg,#4caf82,#80e0b0)", borderRadius: "0 0 3px 3px", boxShadow: "0 0 8px #4caf8288" }} />}
             </button>
           );
         })}
