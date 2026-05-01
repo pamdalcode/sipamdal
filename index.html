@@ -919,6 +919,42 @@
     }
     /* Fresh state: tetap hijau */
     .patrol-time-fresh { color: #4caf82 !important; }
+
+    /* ── Push Notification toggle button ──────────────────────── */
+    .notif-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--card2); border: 1.5px solid var(--border2);
+      border-radius: 12px; padding: 12px 14px; cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    .notif-toggle:hover { border-color: var(--accent); }
+    .notif-toggle.active { border-color: var(--ok); background: var(--green-card); }
+    .notif-switch {
+      width: 42px; height: 24px; border-radius: 12px;
+      background: var(--border2); position: relative;
+      transition: background .25s; flex-shrink: 0;
+    }
+    .notif-switch.on { background: var(--ok); }
+    .notif-switch::after {
+      content: ''; position: absolute; top: 3px; left: 3px;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #fff; transition: transform .25s cubic-bezier(.22,1,.36,1);
+      box-shadow: 0 1px 4px rgba(0,0,0,.3);
+    }
+    .notif-switch.on::after { transform: translateX(18px); }
+
+    /* ── Notif badge pulse pada bell icon ──────────────────────── */
+    @keyframes bellRing {
+      0%,100% { transform: rotate(0deg); }
+      10% { transform: rotate(-20deg); }
+      20% { transform: rotate(20deg); }
+      30% { transform: rotate(-15deg); }
+      40% { transform: rotate(15deg); }
+      50% { transform: rotate(-8deg); }
+      60% { transform: rotate(8deg); }
+      70%,90% { transform: rotate(0deg); }
+    }
+    .bell-ring { animation: bellRing 1.5s ease-in-out; }
   </style>
 </head>
 <body>
@@ -1046,10 +1082,10 @@ const REGU = {
   3: ["Tatang", "Isnanta", "Iwan 92", "Dudi", "Rukman"],
 };
 
-const JADWAL_START = new Date("2025-04-14T06:00:00");
-// Pergantian regu jam 06:00 — geser 6 jam agar batas hari = 06:00
+const JADWAL_START = new Date("2025-04-14T07:00:00");
+// Pergantian regu jam 07:00 — geser 7 jam agar batas hari = 07:00
 function getReguHari(date) {
-  const OFFSET = 6 * 3600000;
+  const OFFSET = 7 * 3600000;
   const d = new Date(new Date(date).getTime() - OFFSET); d.setHours(0,0,0,0);
   const s = new Date(new Date(JADWAL_START).getTime() - OFFSET); s.setHours(0,0,0,0);
   const diff = Math.round((d - s) / 86400000);
@@ -1235,6 +1271,77 @@ function usePatrols() {
 // Gunakan useFS untuk semua data kolaboratif
 const useData = useFS;
 
+// ─── PUSH NOTIFICATION SYSTEM ────────────────────────────────────────────────
+// Hook untuk mengelola izin dan pengiriman push notification PWA
+function usePushNotif() {
+  const [permission, setPermission] = useState(() => {
+    if (!("Notification" in window)) return "unsupported";
+    return Notification.permission;
+  });
+
+  const supported = "Notification" in window;
+
+  // Minta izin notifikasi dari user
+  const requestPermission = async () => {
+    if (!supported) return "unsupported";
+    try {
+      const result = await Notification.requestPermission();
+      setPermission(result);
+      if (result === "granted") {
+        localStorage.setItem("pad_notif_enabled", "1");
+        // Kirim notif selamat datang
+        sendNotif("🔔 Notifikasi Aktif", "SIPAMDAL akan memberitahu kamu saat ada instruksi atau broadcast baru dari pimpinan.", { tag: "welcome" });
+      }
+      return result;
+    } catch {
+      return "denied";
+    }
+  };
+
+  // Kirim notifikasi
+  const sendNotif = (title, body, opts = {}) => {
+    if (!supported || Notification.permission !== "granted") return;
+    try {
+      // Coba via Service Worker dulu (agar muncul saat app di background)
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.ready.then(sw => {
+          sw.showNotification(title, {
+            body,
+            icon: "./icon-192.png",
+            badge: "./icon-96.png",
+            vibrate: [200, 100, 200],
+            requireInteraction: opts.priority === "Penting",
+            tag: opts.tag || ("sipamdal-" + Date.now()),
+            data: { url: window.location.href, tab: opts.tab || "instruksi" },
+            ...opts,
+          });
+        }).catch(() => {
+          // Fallback: notif biasa
+          new Notification(title, {
+            body,
+            icon: "./icon-192.png",
+            tag: opts.tag || ("sipamdal-" + Date.now()),
+          });
+        });
+      } else {
+        new Notification(title, {
+          body,
+          icon: "./icon-192.png",
+          tag: opts.tag || ("sipamdal-" + Date.now()),
+        });
+      }
+    } catch (e) {
+      console.warn("Notif gagal:", e);
+    }
+  };
+
+  const isEnabled = permission === "granted";
+  const isDenied  = permission === "denied";
+
+  return { permission, supported, isEnabled, isDenied, requestPermission, sendNotif };
+}
+
+
 // Kompres foto agar tidak melebihi batas Firestore (1MB) + tambah timestamp overlay
 // Firestore: max 1MB per dokumen. Base64 ~33% lebih besar dari binary.
 // Target aman: base64 string < 750.000 karakter (~562KB binary) agar dokumen tidak penuh.
@@ -1323,14 +1430,14 @@ const fmtDS = (d) => new Date(d).toLocaleDateString("id-ID",{day:"numeric",month
 const getShift = (d=new Date()) => { const h=d.getHours(); if(h>=8&&h<12)return{l:"Pagi",t:"08:00-12:00"}; if(h>=12&&h<18)return{l:"Siang",t:"12:00-18:00"}; if(h>=18)return{l:"Petang",t:"18:00-00:00"}; return{l:"Malam",t:"00:00-08:00"}; };
 const getPos = (area) => Object.entries(PATROL_AREAS).find(([,as])=>as.includes(area))?.[0];
 
-// Hitung waktu berakhirnya piket regu (jam 06:00 esok hari)
+// Hitung waktu berakhirnya piket regu (jam 07:00 esok hari)
 function getShiftEnd(now) {
   const end = new Date(now);
   end.setDate(end.getDate() + 1);
-  end.setHours(6, 0, 0, 0);
-  // Kalau sekarang sebelum jam 06:00, end tetap hari ini jam 06:00
+  end.setHours(7, 0, 0, 0);
+  // Kalau sekarang sebelum jam 07:00, end tetap hari ini jam 07:00
   const todayEnd = new Date(now);
-  todayEnd.setHours(6, 0, 0, 0);
+  todayEnd.setHours(7, 0, 0, 0);
   if (now < todayEnd) return todayEnd;
   return end;
 }
@@ -1354,6 +1461,7 @@ const IC = ({n,s=18,c="currentColor"}) => ({
   rot:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>,
   qr:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="5" y="5" width="3" height="3"/><rect x="16" y="5" width="3" height="3"/><rect x="16" y="16" width="3" height="3"/><rect x="5" y="16" width="3" height="3"/></svg>,
   cam:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
+  bell:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
   plus:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   ok:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>,
   x:<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
@@ -1809,7 +1917,7 @@ function PatrolRing({ value, max, label, onClick }) {
   );
 }
 
-function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols,standJaga,mutations,posRollingLog,liburData,setLiburData,instruksi,currentUser,setTab,canEdit,isAdmin,keluarData,statusPimpinan={hadir:true},setStatusPimpinan,toast}) {
+function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols,standJaga,mutations,posRollingLog,liburData,setLiburData,instruksi,currentUser,setTab,canEdit,isAdmin,keluarData,statusPimpinan={hadir:true},setStatusPimpinan,toast,broadcast}) {
   const pending=packages.filter(p=>p.status==="Belum Diambil").length;
   const staying=guests.filter(g=>g.status==="Masih Ada").length;
   const todP=patrols.filter(p=>new Date(p.ts).toDateString()===now.toDateString()).length;
@@ -1839,12 +1947,6 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
   const todayMut = mutations.filter(m => new Date(m.ts).toDateString() === now.toDateString());
   const noMutasi = todayMut.length === 0;
 
-  const alerts = [
-    ...(posKosong    ? [{icon:"🔴", msg:`POS BELUM TERISI: ${emptyPos.join(", ")}`, col:"#e53e3e", bg:"rgba(229,62,62,.1)", tab: isAdmin ? null : "pos"}] : []),
-    ...(patrolOverdue? [{icon:"⚡", msg: todP===0 ? "Belum ada patroli hari ini" : `Patroli terakhir ${Math.floor(msSincePatrol/60000)} menit lalu — saatnya patroli!`, col:"#ff9900", bg:"rgba(255,153,0,.09)", tab: isAdmin ? null : "patrol"}] : []),
-    ...(rollingOverdue&&canEdit? [{icon:"🔄", msg:`Sudah ${msSinceRolling===Infinity?"--":Math.floor(msSinceRolling/60000)} menit belum rolling pos`, col:"var(--accent)", bg:"rgba(91,155,213,.09)", tab: isAdmin ? null : "pos"}] : []),
-    ...(noMutasi     ? [{icon:"📋", msg:"Belum ada laporan serah terima shift hari ini", col:"var(--tx2)", bg:"var(--card)", tab:"mutation"}] : []),
-  ];
 
   // ── Kepatuhan patroli: target 1 per jam dalam shift 12 jam = 12 ideal ──
   const PATROL_TARGET = 12;
@@ -1854,6 +1956,18 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
 
   // ── Kartu stat dengan ikon unik & metadata glow ──
   const cards=[
+    {
+      l:"Insiden Aktif", v:actI,
+      col: actI>0 ? "#e53e3e" : "var(--ok)", icon:"alert", t:"incident",
+      glowClass: actI > 0 ? "card-glow-red" : "",
+      emoji:"🚨",
+    },
+    {
+      l:"Pos Kosong", v:emptyPos.length,
+      col: posKosong ? "#fb923c" : "var(--ok)", icon:"shield", t:"pos",
+      glowClass: posKosong ? "card-glow-warn" : "",
+      emoji:"🏠",
+    },
     {
       l:"Paket Menunggu", v:pending,
       col:"#ff9900", icon:"pkg", t:"package",
@@ -1873,188 +1987,416 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
       emoji:"🚶",
     },
   ];
-  const staggerClass = ["card-stagger-1","card-stagger-2","card-stagger-3","card-stagger-4"];
+
   return (
     <div>
       {/* ═══════════════════════════════════════════════════
-           HERO CARD ANGGOTA — Smart Hero v2
-           Priority: instruksi aktif → override seluruh hero
-           Fallback: status pimpinan + stat counters
+           HERO CARD ANGGOTA — Live Hero v3
+           Sapaan · Broadcast Admin · Notif Real-time · Quote
       ═══════════════════════════════════════════════════ */}
       {!isAdmin && (()=>{
         const myPos = POS_LIST.find(p=>(posAssign[p]||[]).includes(currentUser?.name));
-        const posKosongCount = POS_LIST.filter(p=>!(posAssign[p]?.length>0)).length;
+        const hour = now.getHours();
+        const greeting = hour < 11 ? "Selamat Pagi" : hour < 15 ? "Selamat Siang" : hour < 18 ? "Selamat Sore" : "Selamat Malam";
+        const greetEmoji = hour < 11 ? "🌤️" : hour < 15 ? "☀️" : hour < 18 ? "🌇" : "🌙";
+        const firstName = (currentUser?.name||"").split(" ")[0];
 
-        // ── Urgency level ──
-        const isCritical = actI > 0 || posKosong;
-        const urgencyColor = actI > 0 ? "#e53e3e" : posKosong ? "#fb923c" : "var(--accent-light)";
-        const urgencyText  = actI > 0 ? "ADA INSIDEN AKTIF" : posKosong ? "POS BELUM TERISI" : "KONDISI NORMAL";
-        const urgencyIcon  = actI > 0 ? "🚨" : posKosong ? "⚠️" : "✅";
+        // ── Quote harian (rotasi per hari) ──
+        const QUOTES = [
+          {q:"Keamanan bukan tugas satu orang, tapi tanggung jawab kita bersama.",a:"Prinsip Pamdal"},
+          {q:"Waspada adalah tameng terbaik sebelum ancaman datang.",a:"Pepatah Satpam"},
+          {q:"Disiplin hari ini adalah ketenangan hari esok.",a:"Prinsip Pamdal"},
+          {q:"Pos yang dijaga dengan serius adalah benteng yang kokoh.",a:"Kode Etik Pamdal"},
+          {q:"Patroli yang rutin mencegah insiden sebelum terjadi.",a:"SOP Pengamanan"},
+          {q:"Profesionalisme dimulai dari hal-hal kecil yang dilakukan dengan sungguh-sungguh.",a:"Prinsip Pamdal"},
+          {q:"Keselamatan semua orang ada di tangan kita malam ini.",a:"Pesan Danru"},
+        ];
+        const dayIdx = now.getDay();
+        const quote = QUOTES[dayIdx % QUOTES.length];
 
-        // ── Background hero: merah-kritis jika ada insiden/pos kosong ──
-        const heroBg = actI > 0
-          ? "linear-gradient(135deg,#1a0a0a,#220d0d)"
-          : posKosong
-          ? "linear-gradient(135deg,#1a1200,#1e1500)"
-          : "var(--status-card-bg)";
-        const heroBorder = actI > 0
-          ? "2px solid rgba(229,62,62,.55)"
-          : posKosong
-          ? "2px solid rgba(245,158,11,.45)"
-          : "2px solid rgba(91,155,213,.20)";
-        const heroGlow = actI > 0
-          ? "0 0 28px rgba(229,62,62,.18), 0 2px 8px rgba(0,0,0,.6)"
-          : posKosong
-          ? "0 0 22px rgba(245,158,11,.14), 0 2px 8px rgba(0,0,0,.6)"
-          : "none";
+        // ── Notifikasi real-time (max 3, prioritas tertinggi dulu) ──
+        const notifItems = [
+          ...(actI > 0 ? [{icon:"🚨", msg:`${actI} insiden aktif belum selesai`, col:"#e53e3e", tab:"incident", urgent:true}] : []),
+          ...(posKosong ? [{icon:"⚠️", msg:`Pos kosong: ${emptyPos.join(", ")}`, col:"#fb923c", tab:"pos", urgent:true}] : []),
+          ...(patrolOverdue ? [{icon:"⚡", msg: todP===0 ? "Belum ada patroli hari ini — segera lakukan!" : `Patroli terakhir ${Math.floor(msSincePatrol/60000)} mnt lalu`, col:"#ff9900", tab:"patrol", urgent:false}] : []),
+          ...(noMutasi ? [{icon:"📋", msg:"Belum ada laporan serah terima shift hari ini", col:"var(--tx3)", tab:"mutation", urgent:false}] : []),
+        ].slice(0,3);
 
-        // ── Instruksi aktif untuk regu ini ──
+        const hasUrgent = notifItems.some(n=>n.urgent);
+        const hasBroadcast = broadcast && broadcast.aktif;
+
+        // ── Instruksi pimpinan aktif untuk regu ini ──
         const myRegu = currentUser?.regu;
-        const instruksiAktif = (instruksi||[]).filter(i =>
-          i.aktif && (i.targetRegu==="Semua" || String(i.targetRegu)===String(myRegu))
+        const instruksiAktif = (instruksi||[]).filter(i=>
+          i.aktif && !i.selesai &&
+          (i.targetRegu==="Semua" || String(i.targetRegu)===String(myRegu))
         );
         const hasInstruksi = instruksiAktif.length > 0;
-        const topInstruksi = instruksiAktif[0]; // yang terpenting
+        const [instruksiIdx, setInstruksiIdx] = React.useState(0);
+        const curInstruksi = instruksiAktif[instruksiIdx % Math.max(instruksiAktif.length,1)];
 
-        // ── Pimpinan status ──
-        const pimpinanHadir = statusPimpinan?.hadir !== false;
-        const pimpinanColor = pimpinanHadir ? "#4caf82" : "#e53e3e";
-        const pimpinanText  = pimpinanHadir ? "Pimpinan Sedang Di Tempat / Kantor" : "Pimpinan Sedang Keluar";
-        const pimpinanIcon  = pimpinanHadir ? "🟢" : "🔴";
+        // Hero BG: instruksi > broadcast > urgent > normal
+        const heroBg = hasInstruksi
+          ? "linear-gradient(135deg,#1a0000,#2d0505)"
+          : hasBroadcast
+          ? "linear-gradient(135deg,#0e1020,#161830)"
+          : hasUrgent
+          ? "linear-gradient(135deg,#130a0a,#1c0e0e)"
+          : "var(--status-card-bg)";
+        const heroBorder = hasInstruksi
+          ? "2px solid rgba(220,38,38,.70)"
+          : hasBroadcast
+          ? "2px solid rgba(91,155,213,.40)"
+          : hasUrgent
+          ? "2px solid rgba(229,62,62,.40)"
+          : "2px solid rgba(91,155,213,.15)";
+
+        // Jika ada instruksi aktif — tampilkan Hero Card KHUSUS instruksi
+        if (hasInstruksi) {
+          const priCol = curInstruksi.prioritas==="Info"?"#4caf82":"#dc2626";
+          const priBg = curInstruksi.prioritas==="Info"?"rgba(76,175,130,.12)":"rgba(220,38,38,.14)";
+          return (
+            <div className="hero-hud-scanline" style={{
+              background: heroBg,
+              border: heroBorder,
+              borderRadius: 16,
+              padding: "14px 14px 14px",
+              marginBottom: 12,
+              position: "relative",
+              overflow: "hidden",
+              boxShadow: "0 0 32px rgba(220,38,38,.25), 0 2px 12px rgba(0,0,0,.7)",
+              transition: "background .4s ease, border .4s ease",
+            }}>
+              {/* Ambient glow blob merah */}
+              <div style={{position:"absolute",top:-40,right:-40,width:140,height:140,background:"#dc2626",borderRadius:"50%",opacity:.08,pointerEvents:"none"}}/>
+              {/* Corner bracket decoration merah */}
+              <div style={{position:"absolute",top:8,left:8,width:14,height:14,borderTop:"2px solid #dc2626",borderLeft:"2px solid #dc2626",opacity:.6,pointerEvents:"none"}}/>
+              <div style={{position:"absolute",bottom:8,right:8,width:14,height:14,borderBottom:"2px solid #dc2626",borderRight:"2px solid #dc2626",opacity:.6,pointerEvents:"none"}}/>
+
+              {/* Header instruksi */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span className="icon-glow-red" style={{fontSize:20,lineHeight:1,display:"inline-block"}}>📋</span>
+                  <div>
+                    <div style={{fontSize:8.5,letterSpacing:2.5,color:"#e53e3e",fontWeight:800,textTransform:"uppercase"}}>
+                      INSTRUKSI PIMPINAN · AKTIF
+                    </div>
+                    <div style={{fontSize:12,fontWeight:800,color:"var(--tx)",lineHeight:1.2}}>
+                      {greeting}, <span style={{color:"#ff6b6b"}}>{firstName}</span>
+                    </div>
+                  </div>
+                </div>
+                {/* Badge jumlah + nav jika > 1 */}
+                <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                  {instruksiAktif.length > 1 && (
+                    <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                      <button onClick={e=>{e.stopPropagation();setInstruksiIdx(i=>(i-1+instruksiAktif.length)%instruksiAktif.length);}} style={{background:"rgba(220,38,38,.15)",border:"1px solid rgba(220,38,38,.40)",borderRadius:5,padding:"2px 7px",fontSize:13,color:"#e53e3e",cursor:"pointer",fontFamily:"inherit",lineHeight:1}}>‹</button>
+                      <span style={{fontSize:9,color:"var(--tx3)",fontWeight:700}}>{(instruksiIdx%instruksiAktif.length)+1}/{instruksiAktif.length}</span>
+                      <button onClick={e=>{e.stopPropagation();setInstruksiIdx(i=>(i+1)%instruksiAktif.length);}} style={{background:"rgba(220,38,38,.15)",border:"1px solid rgba(220,38,38,.40)",borderRadius:5,padding:"2px 7px",fontSize:13,color:"#e53e3e",cursor:"pointer",fontFamily:"inherit",lineHeight:1}}>›</button>
+                    </div>
+                  )}
+                  <div style={{background:"rgba(220,38,38,.18)",border:"1px solid rgba(220,38,38,.45)",borderRadius:6,padding:"2px 8px"}}>
+                    <span style={{fontSize:9,fontWeight:800,color:"#e53e3e"}}>{instruksiAktif.length} INSTRUKSI</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Konten instruksi — full card */}
+              <div style={{
+                background:"rgba(220,38,38,.08)",
+                border:"1px solid rgba(220,38,38,.30)",
+                borderLeft:`4px solid ${priCol}`,
+                borderRadius:10,
+                padding:"12px 14px",
+                marginBottom:10,
+                animation:"heroContentIn .3s cubic-bezier(.22,1,.36,1) both",
+              }}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                  <span style={{fontSize:9,fontWeight:800,color:priCol,background:priBg,borderRadius:4,padding:"1px 8px",textTransform:"uppercase",letterSpacing:.5}}>{curInstruksi.prioritas||"Normal"}</span>
+                  <span style={{fontSize:8.5,color:"var(--tx4)",marginLeft:"auto"}}>{fmtDT(curInstruksi.ts)}</span>
+                </div>
+                <div style={{fontSize:14,fontWeight:900,color:"var(--tx)",lineHeight:1.3,marginBottom:6}}>{curInstruksi.judul}</div>
+                <div style={{fontSize:12.5,color:"var(--tx2)",lineHeight:1.55,whiteSpace:"pre-line"}}>{curInstruksi.isi}</div>
+                {curInstruksi.pengirim && (
+                  <div style={{fontSize:10,color:"var(--tx3)",marginTop:8,borderTop:"1px solid rgba(220,38,38,.18)",paddingTop:6}}>
+                    — {curInstruksi.pengirim} {curInstruksi.targetRegu&&curInstruksi.targetRegu!=="Semua"?`· Regu ${curInstruksi.targetRegu}`:"· Semua Regu"}
+                  </div>
+                )}
+              </div>
+
+              {/* Dot indicators jika lebih dari 1 instruksi */}
+              {instruksiAktif.length > 1 && (
+                <div style={{display:"flex",justifyContent:"center",gap:5,marginBottom:8}}>
+                  {instruksiAktif.map((_,i)=>(
+                    <div key={i} onClick={()=>setInstruksiIdx(i)} style={{
+                      width: i===instruksiIdx%instruksiAktif.length ? 16 : 6,
+                      height:6, borderRadius:3,
+                      background: i===instruksiIdx%instruksiAktif.length ? "#dc2626" : "var(--border2)",
+                      transition:"all .25s ease", cursor:"pointer",
+                    }}/>
+                  ))}
+                </div>
+              )}
+
+              {/* Info pos anggota */}
+              {myPos && (
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{fontSize:9,color:"var(--tx4)",letterSpacing:1}}>
+                    {["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"][now.getDay()]} · Regu {reguHari}
+                  </div>
+                  <div style={{background:"var(--green-card)",border:"1px solid var(--dark-border2)",borderRadius:7,padding:"2px 8px",display:"flex",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:9}}>📍</span>
+                    <span style={{fontSize:9,color:"var(--accent-light)",fontWeight:700}}>{myPos.replace("Pos ","")}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
 
         return (
           <div className="hero-hud-scanline" style={{
             background: heroBg,
             border: heroBorder,
-            borderRadius: 14,
-            padding: "16px",
-            marginBottom: 14,
+            borderRadius: 16,
+            padding: "14px 14px 12px",
+            marginBottom: 12,
             position: "relative",
             overflow: "hidden",
-            boxShadow: heroGlow,
-            transition: "background .4s ease, border .4s ease, box-shadow .4s ease",
+            boxShadow: hasUrgent ? "0 0 28px rgba(229,62,62,.15), 0 2px 8px rgba(0,0,0,.6)" : "0 2px 12px rgba(0,0,0,.4)",
+            transition: "background .4s ease, border .4s ease",
           }}>
             {/* Ambient glow blob */}
-            <div style={{position:"absolute",top:-40,right:-40,width:120,height:120,background:urgencyColor,borderRadius:"50%",opacity:.06,pointerEvents:"none",transition:"background .4s"}}/>
+            <div style={{position:"absolute",top:-40,right:-40,width:130,height:130,background:hasBroadcast?"#4169E1":hasUrgent?"#e53e3e":"#4169E1",borderRadius:"50%",opacity:.05,pointerEvents:"none",transition:"background .4s"}}/>
 
-            {/* ── MODE A: INSTRUKSI OVERRIDE ── */}
-            {hasInstruksi ? (
-              <div style={{animation:"heroContentIn .3s cubic-bezier(.22,1,.36,1) both"}}>
-                {/* Header instruksi */}
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-                  <div style={{
-                    width:36,height:36,borderRadius:9,
-                    background:"linear-gradient(135deg,#dc2626,#ef4444)",
-                    display:"flex",alignItems:"center",justifyContent:"center",
-                    fontSize:18,flexShrink:0,
-                    boxShadow:"0 2px 10px rgba(220,38,38,.45)",
-                  }}>🚨</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:8.5,letterSpacing:2.5,color:"#ef4444",fontWeight:800,textTransform:"uppercase"}}>
-                      Instruksi Pimpinan Aktif
-                    </div>
-                    <div style={{fontSize:9.5,color:"var(--tx3)",marginTop:1}}>
-                      {instruksiAktif.length} instruksi · {topInstruksi.targetRegu==="Semua"?"Semua Regu":`Regu ${topInstruksi.targetRegu}`}
-                    </div>
+            {/* ── BARIS ATAS: Sapaan ── */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{fontSize:22,lineHeight:1}}>{greetEmoji}</div>
+                <div>
+                  <div style={{fontSize:8.5,letterSpacing:2,color:"var(--tx3)",fontWeight:700,textTransform:"uppercase"}}>
+                    {["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"][now.getDay()]} · Regu {reguHari}
                   </div>
-                  <button onClick={()=>setTab("instruksi")} className="shimmer-btn" style={{
-                    background:"rgba(220,38,38,.15)",border:"1px solid rgba(220,38,38,.35)",
-                    borderRadius:8,padding:"4px 10px",fontSize:10,color:"#ef4444",fontWeight:800,
-                    cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",transition:"all .18s",
-                  }}>Buka →</button>
+                  <div style={{fontSize:14,fontWeight:900,color:"var(--tx)",lineHeight:1.2,letterSpacing:.2}}>
+                    {greeting}, <span style={{color:"var(--accent-light)"}}>{firstName}</span>!
+                  </div>
                 </div>
+              </div>
+              {myPos && (
+                <div style={{background:"var(--green-card)",border:"1px solid var(--dark-border2)",borderRadius:8,padding:"3px 8px",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                  <span style={{fontSize:10}}>📍</span>
+                  <span style={{fontSize:9.5,color:"var(--accent-light)",fontWeight:700,whiteSpace:"nowrap"}}>{myPos.replace("Pos ","")}</span>
+                </div>
+              )}
+            </div>
 
-                {/* Instruksi utama */}
+            {/* ── AREA TENGAH: Broadcast Admin (jika ada) atau Tips Otomatis ── */}
+            {(()=>{
+              const TIPS = [
+                {icon:"💪", msg:"Jaga stamina, minum air yang cukup selama shift.", sub:"Kesehatan anggota prioritas utama."},
+                {icon:"🔦", msg:"Cek senter dan alat komunikasi sebelum patroli.", sub:"Peralatan siap = patroli lancar."},
+                {icon:"👀", msg:"Waspadai area parkir dan blind spot.", sub:"Laporkan setiap hal yang mencurigakan."},
+                {icon:"🤝", msg:"Koordinasi antar pos kunci kelancaran shift.", sub:"Saling update kondisi secara berkala."},
+                {icon:"📝", msg:"Catat setiap kejadian, sekecil apapun.", sub:"Detail laporan membantu investigasi."},
+                {icon:"🚶", msg:"Patroli rutin tiap jam tanpa pengecualian.", sub:"Kehadiran fisik adalah pencegahan terbaik."},
+                {icon:"😴", msg:"Jika mengantuk, segera beritahu rekan.", sub:"Jangan paksakan diri sendirian malam ini."},
+                {icon:"🌧️", msg:"Cuaca ekstrem? Tetap patroli dengan APD.", sub:"Laporkan kondisi lapangan ke danru."},
+                {icon:"📱", msg:"Pastikan HT dan HP selalu siap dan terisi.", sub:"Komunikasi adalah nyawa koordinasi."},
+                {icon:"🧠", msg:"Tetap disiplin meski tidak ada yang melihat.", sub:"Profesionalisme dimulai dari diri sendiri."},
+              ];
+              const tip = TIPS[now.getHours() % TIPS.length];
+
+              if (hasBroadcast) {
+                // Tampilan broadcast admin
+                return (
+                  <div style={{
+                    background:"rgba(91,155,213,.10)",
+                    border:"1px solid rgba(91,155,213,.28)",
+                    borderLeft:"4px solid var(--accent)",
+                    borderRadius:10,
+                    padding:"11px 13px",
+                    marginBottom:10,
+                    animation:"heroContentIn .3s cubic-bezier(.22,1,.36,1) both",
+                  }}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+                      <span style={{fontSize:12}}>📣</span>
+                      <span style={{fontSize:8.5,fontWeight:800,letterSpacing:2,color:"var(--accent)",textTransform:"uppercase"}}>Pesan dari Pimpinan</span>
+                      <span style={{fontSize:8.5,color:"var(--tx4)",marginLeft:"auto"}}>{fmtDT(broadcast.ts)}</span>
+                    </div>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--tx)",lineHeight:1.5}}>{broadcast.pesan}</div>
+                    {broadcast.pengirim && (
+                      <div style={{fontSize:10,color:"var(--tx3)",marginTop:4}}>— {broadcast.pengirim}</div>
+                    )}
+                  </div>
+                );
+              }
+
+              // Tampilan tips otomatis
+              return (
                 <div style={{
-                  background:"rgba(220,38,38,.08)",
-                  border:"1px solid rgba(220,38,38,.25)",
-                  borderLeft:"4px solid #dc2626",
+                  background:"rgba(76,175,130,.07)",
+                  border:"1px solid rgba(76,175,130,.22)",
+                  borderLeft:"4px solid #4caf82",
                   borderRadius:10,
-                  padding:"11px 14px",
-                  marginBottom: instruksiAktif.length > 1 ? 8 : 0,
+                  padding:"11px 13px",
+                  marginBottom:10,
                 }}>
-                  <div style={{
-                    fontSize:13.5,fontWeight:900,color:"#fff",lineHeight:1.45,
-                    letterSpacing:.2,
-                    transition:"opacity .3s",
-                  }}>{topInstruksi.judul}</div>
-                  <div style={{fontSize:11.5,color:"rgba(255,255,255,.75)",marginTop:5,lineHeight:1.55}}>
-                    {topInstruksi.isi.slice(0,140)}{topInstruksi.isi.length>140?"…":""}
-                  </div>
-                  <div style={{fontSize:9.5,color:"rgba(255,255,255,.4)",marginTop:6}}>
-                    {["🚨 Penting","📋 Normal","ℹ️ Info"][["Penting","Normal","Info"].indexOf(topInstruksi.prioritas)]||"📋"} · {fmtDT(topInstruksi.ts)}
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:20,lineHeight:1,flexShrink:0}}>{tip.icon}</span>
+                    <div>
+                      <div style={{fontSize:12.5,fontWeight:700,color:"var(--tx)",lineHeight:1.4}}>{tip.msg}</div>
+                      <div style={{fontSize:10.5,color:"var(--tx3)",marginTop:2}}>{tip.sub}</div>
+                    </div>
                   </div>
                 </div>
+              );
+            })()}
 
-                {/* Sisa instruksi jika > 1 */}
-                {instruksiAktif.length > 1 && (
-                  <div style={{
-                    background:"var(--stat-inner)",borderRadius:8,padding:"7px 12px",
-                    display:"flex",justifyContent:"space-between",alignItems:"center",
-                    cursor:"pointer",border:"1px solid var(--border)",
-                  }} onClick={()=>setTab("instruksi")}>
-                    <span style={{fontSize:11,color:"var(--tx3)",fontWeight:600}}>
-                      +{instruksiAktif.length-1} instruksi lainnya
-                    </span>
-                    <span style={{fontSize:10.5,color:"var(--accent-light)"}}>Lihat semua →</span>
-                  </div>
-                )}
-              </div>
+            {/* ── SLIDING CAPSULE: Notif real-time + Quote ── */}
+            {(()=>{
+              const capsuleItems = [
+                ...notifItems,
+                {icon:"💡", msg:`"${quote.q}" — ${quote.a}`, col:"var(--accent-dim)", tab:null, urgent:false, isQuote:true},
+              ];
+              const total = capsuleItems.length;
+              const [idx, setIdx] = React.useState(0);
+              const [animDir, setAnimDir] = React.useState(null); // "left"|"right"|null
+              const [animating, setAnimating] = React.useState(false);
+              const touchStartX = React.useRef(null);
+              const timerRef = React.useRef(null);
 
-            ) : (
-              /* ── MODE B: STATUS NORMAL — Pimpinan + Stats ── */
-              <div style={{animation:"heroContentIn .3s cubic-bezier(.22,1,.36,1) both"}}>
-                {/* BARIS ATAS: Status Operasional saja */}
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,gap:10}}>
-                  {/* Status Operasional */}
-                  <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
-                    <div style={{
-                      width:40,height:40,borderRadius:"50%",
-                      background:urgencyColor+"18",
-                      border:`2px solid ${urgencyColor}44`,
-                      display:"flex",alignItems:"center",justifyContent:"center",
-                      fontSize:20,flexShrink:0,
-                      transition:"background .4s,border .4s",
+              // Auto-rotate setiap 4 detik
+              React.useEffect(() => {
+                timerRef.current = setInterval(() => {
+                  goTo((prev) => (prev + 1) % total, "left");
+                }, 4000);
+                return () => clearInterval(timerRef.current);
+              }, [total]);
+
+              const goTo = (nextOrFn, dir) => {
+                if (animating) return;
+                const next = typeof nextOrFn === "function" ? nextOrFn(idx) : nextOrFn;
+                if (next === idx) return;
+                clearInterval(timerRef.current);
+                setAnimDir(dir);
+                setAnimating(true);
+                setTimeout(() => {
+                  setIdx(next);
+                  setAnimDir(null);
+                  setAnimating(false);
+                  // restart auto
+                  timerRef.current = setInterval(() => {
+                    goTo((p) => (p + 1) % total, "left");
+                  }, 4000);
+                }, 220);
+              };
+
+              const prev = () => goTo((idx - 1 + total) % total, "right");
+              const next = () => goTo((idx + 1) % total, "left");
+
+              const onTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
+              const onTouchEnd = (e) => {
+                if (touchStartX.current === null) return;
+                const dx = e.changedTouches[0].clientX - touchStartX.current;
+                if (dx < -40) next();
+                else if (dx > 40) prev();
+                touchStartX.current = null;
+              };
+
+              const cur = capsuleItems[idx];
+              const capsuleBg = cur.isQuote ? "var(--stat-inner)" : cur.urgent ? `${cur.col}14` : `${cur.col}10`;
+              const capsuleBorder = cur.isQuote ? "var(--border)" : `${cur.col}40`;
+              const capsuleBorderLeft = cur.isQuote ? "var(--accent-dim)" : cur.col;
+
+              const slideStyle = animating ? {
+                opacity: 0,
+                transform: animDir === "left" ? "translateX(-12px)" : "translateX(12px)",
+              } : {
+                opacity: 1,
+                transform: "translateX(0)",
+              };
+
+              return (
+                <div>
+                  {/* Kapsul utama */}
+                  <div
+                    onTouchStart={onTouchStart}
+                    onTouchEnd={onTouchEnd}
+                    onClick={() => cur.tab && !animating && setTab(cur.tab)}
+                    style={{
+                      display:"flex", alignItems:"center", gap:8,
+                      background: capsuleBg,
+                      border:`1px solid ${capsuleBorder}`,
+                      borderLeft:`3px solid ${capsuleBorderLeft}`,
+                      borderRadius:10,
+                      padding:"9px 10px",
+                      cursor: cur.tab ? "pointer" : "default",
+                      minHeight: 42,
+                      userSelect:"none",
+                      WebkitUserSelect:"none",
                     }}>
-                      {urgencyIcon}
-                    </div>
-                    <div style={{minWidth:0}}>
-                      <div style={{fontSize:9,letterSpacing:2,color:"var(--tx3)",fontWeight:700,textTransform:"uppercase"}}>Status Operasional</div>
+                    {/* Prev arrow */}
+                    {total > 1 && (
+                      <button onClick={e=>{e.stopPropagation();prev();}} style={{
+                        background:"none",border:"none",padding:"0 2px",cursor:"pointer",
+                        color:"var(--tx3)",fontSize:14,lineHeight:1,flexShrink:0,fontFamily:"inherit",
+                      }}>‹</button>
+                    )}
+
+                    {/* Content — sliding */}
+                    <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
                       <div style={{
-                        fontSize:13,fontWeight:900,color:urgencyColor,letterSpacing:.5,lineHeight:1.2,
-                        transition:"color .35s ease",
-                      }}>{urgencyText}</div>
+                        display:"flex",alignItems:"center",gap:7,
+                        transition:"opacity .22s ease, transform .22s ease",
+                        ...slideStyle,
+                      }}>
+                        <span style={{fontSize:14,flexShrink:0,lineHeight:1}}>{cur.icon}</span>
+                        <span style={{
+                          fontSize: cur.isQuote ? 10.5 : 11.5,
+                          color: cur.isQuote ? "var(--tx3)" : "var(--tx)",
+                          fontWeight: cur.urgent ? 700 : cur.isQuote ? 400 : 500,
+                          fontStyle: cur.isQuote ? "italic" : "normal",
+                          lineHeight: 1.4,
+                          display:"block",
+                          whiteSpace:"nowrap",
+                          overflow:"hidden",
+                          textOverflow:"ellipsis",
+                        }}>{cur.msg}</span>
+                      </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Stat counters: Insiden + Pos Kosong saja */}
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                  {[
-                    {label:"Insiden Aktif", val: actI, col: actI>0?"#e53e3e":"var(--accent-light)", tab:"incident"},
-                    {label:"Pos Kosong",    val: posKosongCount, col: posKosong?"#fb923c":"var(--accent-light)", tab:"pos"},
-                  ].map(item=>(
-                    <div key={item.label} onClick={()=>setTab(item.tab)} className="hud-card" style={{
-                      background:"var(--stat-inner)",
-                      border:`1px solid ${item.col}35`,
-                      borderRadius:10,padding:"10px 6px",textAlign:"center",cursor:"pointer",
-                      transition:"border .3s ease",
-                    }}>
-                      <div className={`stat-number${item.label==="Insiden Aktif"&&item.val>0?" stat-critical":""}`} style={{color:item.col,fontSize:28,transition:"color .3s"}}>{item.val}</div>
-                      <div style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:.6,color:"var(--tx2)",marginTop:4}}>{item.label}</div>
+                    {/* Tap arrow jika ada tab */}
+                    {cur.tab && (
+                      <span style={{fontSize:10,color:cur.col,fontWeight:700,flexShrink:0}}>→</span>
+                    )}
+
+                    {/* Next arrow */}
+                    {total > 1 && (
+                      <button onClick={e=>{e.stopPropagation();next();}} style={{
+                        background:"none",border:"none",padding:"0 2px",cursor:"pointer",
+                        color:"var(--tx3)",fontSize:14,lineHeight:1,flexShrink:0,fontFamily:"inherit",
+                      }}>›</button>
+                    )}
+                  </div>
+
+                  {/* Dot indicators */}
+                  {total > 1 && (
+                    <div style={{display:"flex",justifyContent:"center",gap:5,marginTop:7}}>
+                      {capsuleItems.map((_,i)=>(
+                        <div key={i} onClick={()=>goTo(i, i>idx?"left":"right")} style={{
+                          width: i===idx ? 16 : 6,
+                          height:6,
+                          borderRadius:3,
+                          background: i===idx ? (cur.isQuote?"var(--accent-dim)":cur.col) : "var(--border2)",
+                          transition:"all .25s ease",
+                          cursor:"pointer",
+                        }}/>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-
-                {/* Pos anggota */}
-                {myPos && (
-                  <div style={{marginTop:10,padding:"7px 10px",background:"var(--green-card)",borderRadius:8,border:"1px solid var(--dark-border2)",display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontSize:13}}>📍</span>
-                    <span style={{fontSize:11.5,color:"var(--accent-light)",fontWeight:700}}>Pos kamu: {myPos}</span>
-                  </div>
-                )}
-              </div>
-            )}
+              );
+            })()}
           </div>
         );
       })()}
@@ -2084,10 +2426,6 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
       </div>
       )}
 
-      {/* Alert notifikasi — 1 kapsul slide */}
-      <div style={{minHeight: 58}}>
-        {alerts.length > 0 && <SlidingAlertCapsule alerts={alerts} setTab={setTab} />}
-      </div>
       {/* Libur tambahan hari ini — tap untuk setting */}
       {(()=>{
         const todayKey = now.toISOString().slice(0,10);
@@ -2106,78 +2444,136 @@ function DashTab({now,shift,reguHari,posAssign,incidents,packages,guests,patrols
         );
       })()}
 
-      {/* ── Kartu Statistik — staggered entrance + glow + ikon unik ── */}
-      {/* Layout: 2x2 grid dengan lingkaran HADIR PIMPINAN floating di tengah */}
-      <div style={{position:"relative",marginBottom:14}}>
-        {/* Grid 2x2 */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {cards.map((c,i)=>{
-            // Per-card gradient configs
-            const cardGradients = [
-              {bg:"linear-gradient(145deg,#1a1200,#1f1700)",stripe:"linear-gradient(90deg,#ff9900,#ffcc44)",glow:"#ff9900"},
-              {bg:"linear-gradient(145deg,#100e1f,#16132a)",stripe:"linear-gradient(90deg,#a78bfa,#c4b5fd)",glow:"#a78bfa"},
-              {bg:"linear-gradient(145deg,#061618,#0a1e20)",stripe:"linear-gradient(90deg,#38c8e8,#7de8f8)",glow:"#38c8e8"},
-            ];
-            const cg = cardGradients[i] || cardGradients[0];
-            return (
-            <div key={c.l}
-              className={`${staggerClass[i]} ${c.glowClass} hud-card stat-card-v2`}
-              onClick={()=>c.t&&setTab(c.t)}
-              style={{
-                background: cg.bg,
-                border:`1.5px solid ${c.col}38`,
-                borderRadius:16,
-                padding:"14px 16px",
-                cursor:c.t?"pointer":"default",
-                position:"relative",
-                overflow:"hidden",
-                boxShadow:`0 4px 18px ${c.col}18, 0 1px 4px rgba(0,0,0,.5)`,
-                transition:"border .25s, box-shadow .25s",
-                /* Tambah ruang bawah di baris pertama agar ada jarak cukup untuk lingkaran tengah */
-                ...(i < 2 ? {paddingBottom:22} : {}),
-              }}>
-              {/* Top color stripe */}
-              <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:cg.stripe,borderRadius:"16px 16px 0 0",opacity:.9}} />
-              {/* Glow blob */}
-              <div className="stat-card-v2-inner-glow" style={{background:cg.glow}} />
-              {/* Emoji bg */}
-              <div style={{position:"absolute",top:10,right:12,fontSize:24,opacity:.14,lineHeight:1}}>{c.emoji}</div>
-              {/* Icon + number */}
-              <IC n={c.icon} s={14} c={c.col}/>
-              <div className="stat-number" style={{color:c.col,marginTop:8,textShadow:`0 0 16px ${c.col}99`}}>{c.v}</div>
-              <div className="stat-label" style={{marginTop:5,fontSize:9,letterSpacing:.9}}>{c.l}</div>
+      {/* ── Kartu Statistik — satu tema gelap, stripe atas warna kondisi ── */}
+      {(()=>{
+        // Tentukan warna stripe atas per kartu berdasarkan kondisi data
+        // Hijau = aman/nol, warna khas = ada data/alert
+        const stripeColor = (card) => {
+          if(card.l==="Insiden Aktif")   return card.v>0 ? "#e53e3e" : "#4caf82";
+          if(card.l==="Pos Kosong")      return card.v>0 ? "#fb923c" : "#4caf82";
+          if(card.l==="Paket Menunggu")  return card.v>0 ? "#ff9900" : "#4caf82";
+          if(card.l==="Tamu Menginap")   return card.v>0 ? "#a78bfa" : "#4caf82";
+          if(card.l==="Peserta Keluar")  return card.v>0 ? "#38c8e8" : "#4caf82";
+          return "#4caf82";
+        };
+        const numColor = (card) => {
+          if(card.l==="Insiden Aktif")  return card.v>0 ? "#e53e3e" : "#4caf82";
+          if(card.l==="Pos Kosong")     return card.v>0 ? "#fb923c" : "#4caf82";
+          if(card.l==="Paket Menunggu") return card.v>0 ? "#ff9900" : "#4caf82";
+          if(card.l==="Tamu Menginap")  return card.v>0 ? "#a78bfa" : "#4caf82";
+          if(card.l==="Peserta Keluar") return card.v>0 ? "#38c8e8" : "#4caf82";
+          return "#4caf82";
+        };
+
+        return (
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
+            {/* Baris 1+2: grid 2×2 untuk 4 kartu pertama */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {cards.slice(0,4).map((c,i)=>{
+                const sc = stripeColor(c);
+                const nc = numColor(c);
+                const isAlert = c.v > 0;
+                return (
+                  <div key={c.l} className={`card-stagger-${i+1} hud-card stat-card-v2`}
+                    onClick={()=>c.t&&setTab(c.t)}
+                    style={{
+                      background:"var(--card-solid)",
+                      border:`1.5px solid ${isAlert ? sc+"45" : "var(--border)"}`,
+                      borderRadius:14, padding:"14px 14px 12px",
+                      cursor:c.t?"pointer":"default", position:"relative", overflow:"hidden",
+                      boxShadow: isAlert ? `0 4px 20px ${sc}22, 0 1px 4px rgba(0,0,0,.5)` : "0 1px 4px rgba(0,0,0,.3)",
+                      transition:"all .3s",
+                    }}>
+                    {/* Stripe atas — warna kondisi, animasi pulse jika alert */}
+                    <div style={{
+                      position:"absolute",top:0,left:0,right:0,height:4,
+                      background: isAlert ? `linear-gradient(90deg,${sc},${sc}bb)` : `linear-gradient(90deg,#4caf82,#4caf8288)`,
+                      borderRadius:"14px 14px 0 0",
+                      opacity: isAlert ? 1 : .6,
+                      transition:"background .4s, opacity .4s",
+                      boxShadow: isAlert ? `0 0 8px ${sc}88` : "none",
+                    }}/>
+                    {/* Emoji watermark */}
+                    <div style={{position:"absolute",top:10,right:10,fontSize:22,opacity:.08,lineHeight:1}}>{c.emoji}</div>
+                    <IC n={c.icon} s={13} c={nc} style={{marginTop:2}}/>
+                    <div className={`stat-number${isAlert&&(c.l==="Insiden Aktif"||c.l==="Pos Kosong")?" stat-critical":""}`}
+                      style={{color:nc,marginTop:7,textShadow:isAlert?`0 0 14px ${sc}88`:"none",transition:"color .3s,text-shadow .3s"}}>
+                      {c.v}
+                    </div>
+                    <div className="stat-label" style={{marginTop:4,fontSize:9,letterSpacing:.8}}>{c.l}</div>
+                  </div>
+                );
+              })}
             </div>
-            );
-          })}
 
-          {/* PatrolRing — slot ke-4 (kanan bawah) */}
-          <div
-            className={`${staggerClass[3]} patrol-ring-card-v2`}
-            onClick={()=>!isAdmin&&setTab("patrol")}
-            style={{
-              background:"linear-gradient(145deg,#081510,#0d1e17)",
-              border:`1.5px solid rgba(76,175,130,.32)`,
-              borderRadius:16,
-              padding:"12px 8px",
-              paddingTop:22,
-              cursor:!isAdmin?"pointer":"default",
-              display:"flex",
-              alignItems:"center",
-              justifyContent:"center",
-              position:"relative",
-              overflow:"hidden",
-              boxShadow:"0 4px 18px rgba(76,175,130,.14), 0 1px 4px rgba(0,0,0,.5)",
-            }}>
-            {/* Top green stripe */}
-            <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg,#4caf82,#80e0b0)",borderRadius:"16px 16px 0 0",opacity:.85}} />
-            <div style={{position:"absolute",top:0,right:0,width:64,height:64,background:"#4caf82",opacity:.05,borderRadius:"0 16px 0 64px",pointerEvents:"none"}}/>
-            <div style={{position:"absolute",top:10,right:12,fontSize:22,opacity:.14,lineHeight:1}}>🛡️</div>
-            <PatrolRing value={todP} max={PATROL_TARGET} label="Patroli Hari Ini" />
+            {/* Baris 3: Peserta Keluar + PatrolRing */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {/* Peserta Keluar */}
+              {(()=>{
+                const c = cards[4];
+                const sc = stripeColor(c);
+                const nc = numColor(c);
+                const isAlert = c.v > 0;
+                return (
+                  <div key={c.l} className="card-stagger-5 hud-card stat-card-v2"
+                    onClick={()=>c.t&&setTab(c.t)}
+                    style={{
+                      background:"var(--card-solid)",
+                      border:`1.5px solid ${isAlert ? sc+"45" : "var(--border)"}`,
+                      borderRadius:14, padding:"14px 14px 12px",
+                      cursor:c.t?"pointer":"default", position:"relative", overflow:"hidden",
+                      boxShadow: isAlert ? `0 4px 20px ${sc}22, 0 1px 4px rgba(0,0,0,.5)` : "0 1px 4px rgba(0,0,0,.3)",
+                      transition:"all .3s",
+                    }}>
+                    <div style={{
+                      position:"absolute",top:0,left:0,right:0,height:4,
+                      background: isAlert ? `linear-gradient(90deg,${sc},${sc}bb)` : `linear-gradient(90deg,#4caf82,#4caf8288)`,
+                      borderRadius:"14px 14px 0 0",
+                      opacity: isAlert ? 1 : .6,
+                      transition:"background .4s",
+                      boxShadow: isAlert ? `0 0 8px ${sc}88` : "none",
+                    }}/>
+                    <div style={{position:"absolute",top:10,right:10,fontSize:22,opacity:.08,lineHeight:1}}>{c.emoji}</div>
+                    <IC n={c.icon} s={13} c={nc}/>
+                    <div className="stat-number" style={{color:nc,marginTop:7,textShadow:isAlert?`0 0 14px ${sc}88`:"none",transition:"color .3s"}}>{c.v}</div>
+                    <div className="stat-label" style={{marginTop:4,fontSize:9,letterSpacing:.8}}>{c.l}</div>
+                  </div>
+                );
+              })()}
+
+              {/* PatrolRing */}
+              {(()=>{
+                const pct = PATROL_TARGET>0 ? Math.min(todP/PATROL_TARGET,1) : 0;
+                const ringCol = pct>=.8?"#4caf82":pct>=.4?"#fb923c":"#e53e3e";
+                return (
+                  <div className="card-stagger-6 patrol-ring-card-v2 hud-card"
+                    onClick={()=>!isAdmin&&setTab("patrol")}
+                    style={{
+                      background:"var(--card-solid)",
+                      border:`1.5px solid ${ringCol}40`,
+                      borderRadius:14, padding:"14px 14px 12px",
+                      cursor:!isAdmin?"pointer":"default",
+                      position:"relative", overflow:"hidden",
+                      display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+                      boxShadow:`0 4px 18px ${ringCol}18,0 1px 4px rgba(0,0,0,.3)`,
+                      transition:"all .3s",
+                    }}>
+                    <div style={{
+                      position:"absolute",top:0,left:0,right:0,height:4,
+                      background:`linear-gradient(90deg,${ringCol},${ringCol}88)`,
+                      borderRadius:"14px 14px 0 0",
+                      boxShadow:`0 0 8px ${ringCol}88`,
+                      transition:"background .4s",
+                    }}/>
+                    <div style={{position:"absolute",top:0,right:0,width:55,height:55,background:ringCol,opacity:.04,borderRadius:"0 14px 0 55px",pointerEvents:"none"}}/>
+                    <PatrolRing value={todP} max={PATROL_TARGET} label="Patroli Hari Ini" />
+                  </div>
+                );
+              })()}
+            </div>
           </div>
-        </div>
-
-
-      </div>
+        );
+      })()}
       {/* Aksi Cepat — digantikan oleh FAB */}
 
       {/* Instruksi aktif ditampilkan di Hero Section (mode override) */}
@@ -2732,6 +3128,8 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
   };
 
   const todP = patrols.filter(p=>new Date(p.ts).toDateString()===new Date().toDateString());
+  // Non-admin hanya melihat patroli miliknya sendiri; admin melihat semua
+  const todPVisible = isAdmin ? todP : todP.filter(p => p.officer && p.officer.includes(currentUser?.name||""));
 
   return (
     <div>
@@ -2870,9 +3268,9 @@ function PatrolTab({posAssign,patrols,setPatrols,toast,canEdit,isAdmin,currentUs
 
       {/* Log hari ini */}
       <div className="log-card">
-        <div className="log-card-title">Log Patroli Hari Ini ({todP.length})</div>
-        {todP.length===0&&<div style={{fontSize:11,color:"var(--tx3)"}}>Belum ada patroli</div>}
-        {[...todP].reverse().slice(0,15).map(p=>(
+        <div className="log-card-title">Log Patroli Hari Ini ({todPVisible.length}){!isAdmin&&<span style={{fontSize:10,fontWeight:600,color:"var(--tx3)",marginLeft:6}}>— milik saya</span>}</div>
+        {todPVisible.length===0&&<div style={{fontSize:11,color:"var(--tx3)"}}>Belum ada patroli</div>}
+        {[...todPVisible].reverse().slice(0,15).map(p=>(
           <div key={p.id} style={{padding:"8px 0",borderBottom:"1px solid var(--border)"}}>
             <div style={{display:"flex",gap:9,alignItems:"flex-start"}}>
               <div style={{width:32,height:32,background:"var(--green-card)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:16}}>
@@ -4856,7 +5254,7 @@ function InstruksiTab({instruksi, setInstruksi, toast, isAdmin, currentUser}) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD PIMPINAN TAB
 // ═══════════════════════════════════════════════════════════════════════════════
-function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,currentUser,packages,guests,reguHari,liburData,setLiburData,setTab,canEdit,isAdmin,statusPimpinan={hadir:true},setStatusPimpinan,toast}) {
+function PimpinanTab({now,patrols,incidents,posAssign,instruksi,setInstruksi,mutations,currentUser,packages,guests,reguHari,liburData,setLiburData,setTab,canEdit,isAdmin,statusPimpinan={hadir:true},setStatusPimpinan,toast,broadcast,setBroadcast}) {
 
   // ── Kepatuhan patroli 7 hari terakhir ──
   const days7 = Array.from({length:7},(_,i)=>{
@@ -4911,7 +5309,217 @@ function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,curren
         </div>
       </div>
 
-      {/* KPI UTAMA */}
+      {/* ALERT OPERASIONAL (kotak notif kritis — posisi 1 setelah Hero) */}
+      {(() => {
+        const pending = (packages||[]).filter(p=>p.status==="Belum Diambil").length;
+        const staying = (guests||[]).filter(g=>g.status==="Masih Ada").length;
+        const todP2 = patrols.filter(p=>new Date(p.ts).toDateString()===now.toDateString()).length;
+        const lastPatrol2 = patrols.filter(p=>new Date(p.ts).toDateString()===now.toDateString()).sort((a,b)=>b.ts-a.ts)[0];
+        const msSincePatrol2 = lastPatrol2 ? now - lastPatrol2.ts : Infinity;
+        const patrolOverdue2 = msSincePatrol2 > 3600000;
+        const alrt = [
+          ...(emptyPos.length>0?[{icon:"🔴",msg:`Pos kosong: ${emptyPos.join(", ")}`,col:"#e53e3e",bg:"rgba(229,62,62,.1)"}]:[]),
+          ...(patrolOverdue2?[{icon:"⚡",msg:todP2===0?"Belum ada patroli hari ini":`Patroli terakhir ${Math.floor(msSincePatrol2/60000)} mnt lalu`,col:"#ff9900",bg:"rgba(255,153,0,.09)"}]:[]),
+        ];
+        return alrt.length>0 ? <SlidingAlertCapsule alerts={alrt} setTab={setTab} /> : null;
+      })()}
+
+      {/* JADWAL REGU HARI INI — card no 2 di bawah notif kritis */}
+      {reguHari&&(
+        <div style={{background:"var(--admin-card-bg)",border:"1.5px solid var(--border)",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+          <div style={{fontSize:9,letterSpacing:3,color:"var(--accent)",marginBottom:3}}>JADWAL JAGA HARI INI</div>
+          <div style={{fontSize:20,fontWeight:900,color:"var(--accent-light)",letterSpacing:1}}>{["Min","Sen","Sel","Rab","Kam","Jum","Sab"][now.getDay()].toUpperCase()} — REGU {reguHari}</div>
+          <div style={{fontSize:10,color:"var(--accent)",marginTop:3}}>{REGU[reguHari]?.join(" · ")}</div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════
+           PANEL BROADCAST PIMPINAN
+           Admin kirim pesan langsung ke Hero dashboard anggota
+      ═══════════════════════════════════════════════════ */}
+      {isAdmin && setBroadcast && (() => {
+        const [bcText, setBcText] = React.useState("");
+        const hasBc = broadcast && broadcast.aktif;
+        const sendBc = () => {
+          if(!bcText.trim()){toast("Ketik pesan terlebih dahulu!",false);return;}
+          setBroadcast({
+            aktif: true,
+            pesan: bcText.trim(),
+            pengirim: currentUser?.name || "Pimpinan",
+            ts: Date.now(),
+          });
+          setBcText("");
+          toast("✓ Pesan terkirim ke dashboard anggota!");
+        };
+        const clearBc = () => {
+          setBroadcast(null);
+          toast("Broadcast dihapus.");
+        };
+        return (
+          <div style={{
+            background:"var(--card-solid)",
+            border:"1.5px solid rgba(91,155,213,.30)",
+            borderRadius:14,
+            padding:"14px 16px",
+            marginBottom:14,
+          }}>
+            <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:10}}>
+              <span style={{fontSize:16}}>📣</span>
+              <div>
+                <div style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:1,textTransform:"uppercase"}}>Broadcast Pesan</div>
+                <div style={{fontSize:9.5,color:"var(--tx3)"}}>Pesan tampil di Hero dashboard semua anggota</div>
+              </div>
+              {hasBc && (
+                <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:5}}>
+                  <div style={{width:7,height:7,borderRadius:"50%",background:"var(--ok)",boxShadow:"0 0 6px var(--ok)"}}/>
+                  <span style={{fontSize:9,color:"var(--ok)",fontWeight:700}}>AKTIF</span>
+                </div>
+              )}
+            </div>
+
+            {/* Pesan aktif preview */}
+            {hasBc && (
+              <div style={{
+                background:"rgba(91,155,213,.08)",
+                border:"1px solid rgba(91,155,213,.25)",
+                borderLeft:"3px solid var(--accent)",
+                borderRadius:9,
+                padding:"9px 12px",
+                marginBottom:10,
+              }}>
+                <div style={{fontSize:9,color:"var(--tx3)",marginBottom:3}}>{fmtDT(broadcast.ts)} · dari {broadcast.pengirim}</div>
+                <div style={{fontSize:12,color:"var(--tx)",fontWeight:600,lineHeight:1.5}}>{broadcast.pesan}</div>
+                <button onClick={clearBc} style={{
+                  marginTop:8,background:"rgba(229,62,62,.08)",border:"1px solid rgba(229,62,62,.25)",
+                  borderRadius:6,padding:"4px 12px",fontSize:10,color:"#e53e3e",
+                  fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4,
+                }}>
+                  🗑 Hapus Broadcast
+                </button>
+              </div>
+            )}
+
+            {/* Input pesan baru */}
+            <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+              <textarea
+                value={bcText}
+                onChange={e=>setBcText(e.target.value)}
+                placeholder={hasBc ? "Ketik pesan baru untuk mengganti..." : "Ketik pesan untuk anggota…"}
+                rows={2}
+                style={{
+                  flex:1,background:"var(--inp-bg)",border:"1px solid var(--border2)",
+                  borderRadius:9,padding:"9px 12px",fontSize:12,color:"var(--tx)",
+                  fontFamily:"inherit",resize:"none",lineHeight:1.5,
+                  outline:"none",
+                }}
+                onKeyDown={e=>{if(e.key==="Enter"&&e.ctrlKey)sendBc();}}
+              />
+              <button onClick={sendBc} style={{
+                background:"var(--accent)",border:"none",borderRadius:9,
+                padding:"9px 14px",fontSize:12,color:"#fff",fontWeight:800,
+                cursor:"pointer",fontFamily:"inherit",flexShrink:0,
+                opacity:bcText.trim()?1:.45,transition:"opacity .2s",
+              }}>
+                Kirim
+              </button>
+            </div>
+            <div style={{fontSize:9,color:"var(--tx4)",marginTop:5}}>Ctrl+Enter untuk kirim cepat</div>
+          </div>
+        );
+      })()}
+
+      {/* ═══════════════════════════════════════════════════
+           PANEL INPUT INSTRUKSI PIMPINAN
+           Di bawah Broadcast Pesan
+      ═══════════════════════════════════════════════════ */}
+      {isAdmin && (() => {
+        const [insForm, setInsForm] = React.useState({judul:"",isi:"",prioritas:"Normal",targetRegu:"Semua"});
+        const [insOpen, setInsOpen] = React.useState(false);
+        const fi = (k,v) => setInsForm(f=>({...f,[k]:v}));
+        const submitIns = () => {
+          if(!insForm.judul.trim()||!insForm.isi.trim()){toast("Judul & isi instruksi wajib diisi!",false);return;}
+          const newIns = {...insForm, id:Date.now(), ts:Date.now(), aktif:true, selesai:false, pengirim:currentUser?.name||"Pimpinan"};
+          setInstruksi([newIns,...(instruksi||[])]);
+          setInsForm({judul:"",isi:"",prioritas:"Normal",targetRegu:"Semua"});
+          setInsOpen(false);
+          toast("✓ Instruksi berhasil dikirim ke anggota!");
+        };
+        const aktifCount = (instruksi||[]).filter(i=>i.aktif&&!i.selesai).length;
+        return (
+          <div style={{
+            background:"var(--card-solid)",
+            border:"1.5px solid rgba(220,38,38,.25)",
+            borderRadius:14,
+            padding:"14px 16px",
+            marginBottom:14,
+          }}>
+            <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:insOpen?12:0}}>
+              <span style={{fontSize:16}}>📋</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:11,fontWeight:800,color:"#dc2626",letterSpacing:1,textTransform:"uppercase"}}>Instruksi Pimpinan</div>
+                <div style={{fontSize:9.5,color:"var(--tx3)"}}>Instruksi tampil di Hero Card semua anggota regu</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                {aktifCount>0&&<span style={{fontSize:9,fontWeight:800,color:"#dc2626",background:"rgba(220,38,38,.12)",borderRadius:5,padding:"2px 8px"}}>{aktifCount} AKTIF</span>}
+                <button onClick={()=>setInsOpen(v=>!v)} style={{
+                  background:insOpen?"var(--card2)":"rgba(220,38,38,.12)",
+                  border:`1px solid ${insOpen?"var(--border2)":"rgba(220,38,38,.35)"}`,
+                  borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:800,
+                  color:insOpen?"var(--tx3)":"#dc2626",cursor:"pointer",fontFamily:"inherit",
+                }}>
+                  {insOpen?"✕ Tutup":"+ Buat Instruksi"}
+                </button>
+              </div>
+            </div>
+            {insOpen&&(
+              <div style={{animation:"heroContentIn .2s ease both"}}>
+                <div style={{background:"rgba(220,38,38,.07)",borderRadius:9,padding:"4px 10px",marginBottom:10,fontSize:10,color:"var(--tx3)"}}>
+                  ⚠️ Instruksi akan langsung tampil di Hero Card anggota
+                </div>
+                <div style={{marginBottom:8}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--tx3)",marginBottom:4}}>Judul Instruksi</div>
+                  <input value={insForm.judul} onChange={e=>fi("judul",e.target.value)}
+                    placeholder="Contoh: Siaga penuh malam ini"
+                    style={{width:"100%",background:"var(--inp-bg)",border:"1px solid var(--border2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"var(--tx)",fontFamily:"inherit",outline:"none"}}
+                  />
+                </div>
+                <div style={{marginBottom:8}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--tx3)",marginBottom:4}}>Isi Instruksi</div>
+                  <textarea value={insForm.isi} onChange={e=>fi("isi",e.target.value)}
+                    placeholder="Detail perintah / arahan dari pimpinan..."
+                    rows={3}
+                    style={{width:"100%",background:"var(--inp-bg)",border:"1px solid var(--border2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"var(--tx)",fontFamily:"inherit",resize:"none",lineHeight:1.5,outline:"none"}}
+                  />
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:"var(--tx3)",marginBottom:4}}>Prioritas</div>
+                    <select value={insForm.prioritas} onChange={e=>fi("prioritas",e.target.value)}
+                      style={{width:"100%",background:"var(--card2)",border:"1px solid var(--border2)",borderRadius:8,padding:"8px 10px",fontSize:12,color:"var(--tx)",fontFamily:"inherit",outline:"none"}}>
+                      <option>Normal</option><option>Penting</option><option>Info</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:"var(--tx3)",marginBottom:4}}>Target Regu</div>
+                    <select value={insForm.targetRegu} onChange={e=>fi("targetRegu",e.target.value)}
+                      style={{width:"100%",background:"var(--card2)",border:"1px solid var(--border2)",borderRadius:8,padding:"8px 10px",fontSize:12,color:"var(--tx)",fontFamily:"inherit",outline:"none"}}>
+                      <option value="Semua">Semua Regu</option>
+                      <option value="1">Regu 1</option><option value="2">Regu 2</option><option value="3">Regu 3</option>
+                    </select>
+                  </div>
+                </div>
+                <button onClick={submitIns} style={{
+                  width:"100%",background:"#dc2626",border:"none",borderRadius:9,
+                  padding:"10px 0",fontSize:13,fontWeight:800,color:"#fff",
+                  cursor:"pointer",fontFamily:"inherit",
+                }}>
+                  🚨 Kirim Instruksi
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
         <div style={{background:"var(--green-card)",border:"1.5px solid #bbf7d0",borderRadius:12,padding:"12px 14px"}}>
           <div style={{fontSize:10,color:"var(--tx3)",marginBottom:2}}>Kepatuhan Patroli</div>
@@ -4938,21 +5546,6 @@ function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,curren
         </div>
       </div>
 
-      {/* ALERT OPERASIONAL (tambahan dari dashboard admin) */}
-      {(() => {
-        const pending = (packages||[]).filter(p=>p.status==="Belum Diambil").length;
-        const staying = (guests||[]).filter(g=>g.status==="Masih Ada").length;
-        const todP2 = patrols.filter(p=>new Date(p.ts).toDateString()===now.toDateString()).length;
-        const lastPatrol2 = patrols.filter(p=>new Date(p.ts).toDateString()===now.toDateString()).sort((a,b)=>b.ts-a.ts)[0];
-        const msSincePatrol2 = lastPatrol2 ? now - lastPatrol2.ts : Infinity;
-        const patrolOverdue2 = msSincePatrol2 > 3600000;
-        const alrt = [
-          ...(emptyPos.length>0?[{icon:"🔴",msg:`Pos kosong: ${emptyPos.join(", ")}`,col:"#e53e3e",bg:"rgba(229,62,62,.1)"}]:[]),
-          ...(patrolOverdue2?[{icon:"⚡",msg:todP2===0?"Belum ada patroli hari ini":`Patroli terakhir ${Math.floor(msSincePatrol2/60000)} mnt lalu`,col:"#ff9900",bg:"rgba(255,153,0,.09)"}]:[]),
-        ];
-        return alrt.length>0 ? <SlidingAlertCapsule alerts={alrt} setTab={setTab} /> : null;
-      })()}
-
       {/* PAKET & TAMU (dari dashboard admin) */}
       {(packages||guests)&&(
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
@@ -4966,15 +5559,6 @@ function PimpinanTab({now,patrols,incidents,posAssign,instruksi,mutations,curren
               <div className="stat-label">{c.l}</div>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* JADWAL REGU HARI INI (dari dashboard admin) */}
-      {reguHari&&(
-        <div style={{background:"var(--admin-card-bg)",border:"1.5px solid var(--border)",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
-          <div style={{fontSize:9,letterSpacing:3,color:"var(--accent)",marginBottom:3}}>JADWAL JAGA HARI INI</div>
-          <div style={{fontSize:20,fontWeight:900,color:"var(--accent-light)",letterSpacing:1}}>{["Min","Sen","Sel","Rab","Kam","Jum","Sab"][now.getDay()].toUpperCase()} — REGU {reguHari}</div>
-          <div style={{fontSize:10,color:"var(--accent)",marginTop:3}}>{REGU[reguHari]?.join(" · ")}</div>
         </div>
       )}
 
@@ -5789,7 +6373,58 @@ function App() {
   const [inventarisCek, setInventarisCek] = useData("pad_inv_cek", {});
   const [keluarData, setKeluarData] = useData("pad_keluar", []);
   const [statusPimpinan, setStatusPimpinan] = useData("pad_pimpinan_status", { hadir: true, updatedAt: null, updatedBy: null });
+  const [broadcast, setBroadcast] = useData("pad_broadcast", null);
   const [notif, setNotif] = useState(null);
+
+  // ── Push Notification ──────────────────────────────────────────────────────
+  const pushNotif = usePushNotif();
+
+  // Lacak ID instruksi yang sudah pernah dikirim notif (hindari duplikat)
+  const notifiedInstruksiRef = useRef(new Set(
+    JSON.parse(localStorage.getItem("pad_notified_ins") || "[]")
+  ));
+  const notifiedBroadcastRef = useRef(
+    localStorage.getItem("pad_notified_bc") || ""
+  );
+
+  // Watch instruksi — kirim notif saat ada instruksi BARU dari Firestore
+  useEffect(() => {
+    if (!pushNotif.isEnabled) return;
+    if (!instruksi || instruksi.length === 0) return;
+    const notifiedSet = notifiedInstruksiRef.current;
+    let changed = false;
+    instruksi.forEach(ins => {
+      const id = String(ins.id);
+      if (!notifiedSet.has(id) && ins.aktif && !ins.selesai) {
+        notifiedSet.add(id);
+        changed = true;
+        const priIcon = ins.prioritas === "Penting" ? "🚨" : ins.prioritas === "Info" ? "ℹ️" : "📋";
+        pushNotif.sendNotif(
+          `${priIcon} Instruksi: ${ins.judul}`,
+          ins.isi ? ins.isi.slice(0, 100) + (ins.isi.length > 100 ? "…" : "") : "",
+          { tag: "ins-" + id, priority: ins.prioritas, tab: "instruksi" }
+        );
+      }
+    });
+    if (changed) {
+      try { localStorage.setItem("pad_notified_ins", JSON.stringify([...notifiedSet].slice(-100))); } catch {}
+    }
+  }, [instruksi, pushNotif.isEnabled]);
+
+  // Watch broadcast — kirim notif saat ada broadcast BARU
+  useEffect(() => {
+    if (!pushNotif.isEnabled) return;
+    if (!broadcast || !broadcast.text) return;
+    const bcKey = String(broadcast.ts || broadcast.text.slice(0, 30));
+    if (notifiedBroadcastRef.current === bcKey) return;
+    notifiedBroadcastRef.current = bcKey;
+    try { localStorage.setItem("pad_notified_bc", bcKey); } catch {}
+    pushNotif.sendNotif(
+      "📢 Pesan dari Pimpinan",
+      broadcast.text.slice(0, 120) + (broadcast.text.length > 120 ? "…" : ""),
+      { tag: "broadcast", tab: "dashboard" }
+    );
+  }, [broadcast, pushNotif.isEnabled]);
 
   const toast = (msg, ok = true) => { setNotif({ msg, ok }); setTimeout(() => setNotif(null), 3000); };
 
@@ -5830,16 +6465,20 @@ function App() {
   const ACTIVE_NAV = isAdmin ? NAV_TABS_ADMIN : NAV_TABS;
 
   const MORE_TABS = isAdmin ? [
-    { id: "profile",      label: "Profil",      icon: "ppl",  color: "var(--cb-green)",  glow: "var(--cb-green-glow)" },
-    { id: "mutation",     label: "Mutasi",      icon: "file", color: "var(--cb-blue)",   glow: "var(--cb-blue-glow)" },
-    { id: "inventaris",   label: "Inventaris",  icon: "pkg",  color: "var(--cb-yellow)", glow: "var(--cb-yellow-glow)" },
-    { id: "accentPicker", label: "Warna Tema",  icon: "star", isAccent: true },
-    { id: "changePin",    label: "Ganti PIN",   icon: "key",  isPin: true },
-    { id: "logoutItem",   label: "Logout",      icon: "out",  isLogout: true },
+    { id: "profile",      label: "Profil",      icon: "ppl",    color: "var(--cb-green)",  glow: "var(--cb-green-glow)" },
+    { id: "instruksi",    label: "Instruksi",   icon: "file",   color: "var(--cb-red)",    glow: "var(--cb-red-glow)" },
+    { id: "mutation",     label: "Mutasi",      icon: "rot",    color: "var(--cb-blue)",   glow: "var(--cb-blue-glow)" },
+    { id: "inventaris",   label: "Inventaris",  icon: "pkg",    color: "var(--cb-yellow)", glow: "var(--cb-yellow-glow)" },
+    { id: "absen",        label: "Absensi",     icon: "cal",    color: "var(--cb-purple)", glow: "var(--cb-purple-glow)" },
+    { id: "notifToggle",  label: "Notifikasi",  icon: "bell",   isNotif: true },
+    { id: "accentPicker", label: "Warna Tema",  icon: "star",   isAccent: true },
+    { id: "changePin",    label: "Ganti PIN",   icon: "key",    isPin: true },
+    { id: "logoutItem",   label: "Logout",      icon: "out",    isLogout: true },
   ] : [
     { id: "profile",      label: "Profil Saya", icon: "ppl",  color: "var(--cb-green)",  glow: "var(--cb-green-glow)" },
     { id: "mutation",     label: "Mutasi",      icon: "file", color: "var(--cb-blue)",   glow: "var(--cb-blue-glow)" },
     { id: "inventaris",   label: "Inventaris",  icon: "pkg",  color: "var(--cb-yellow)", glow: "var(--cb-yellow-glow)" },
+    { id: "notifToggle",  label: "Notifikasi",  icon: "bell", isNotif: true },
     { id: "accentPicker", label: "Warna Tema",  icon: "star", isAccent: true },
     { id: "changePin",    label: "Ganti PIN",   icon: "key",  isPin: true },
     { id: "logoutItem",   label: "Logout",      icon: "out",  isLogout: true },
@@ -5878,6 +6517,28 @@ function App() {
         {keluarDiLuar > 0 && <div className="badge-keluar badge-bounce" onClick={()=>goTab("keluar")} style={{ background: "rgba(251,146,60,.9)", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10.5, fontWeight: 700, cursor:"pointer" }}>🚶{keluarDiLuar}</div>}
         {instruksiAktif > 0 && <div className="badge-bounce" style={{ background: "var(--r)", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10.5, fontWeight: 700, cursor:"pointer" }} onClick={()=>setTab("instruksi")}>📋{instruksiAktif}</div>}
         {activeI > 0 && <div className="badge-bounce" style={{ background: "var(--r)", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10.5, fontWeight: 700 }}><span className="icon-shake">⚠</span>{activeI}</div>}
+        {/* Bell notif shortcut */}
+        <button
+          onClick={async () => {
+            if (!pushNotif.isEnabled && pushNotif.supported && !pushNotif.isDenied) {
+              const r = await pushNotif.requestPermission();
+              if (r === "granted") toast("🔔 Notifikasi aktif!");
+            } else {
+              setSettingsOpen(true);
+            }
+          }}
+          title={pushNotif.isEnabled ? "Notifikasi aktif" : "Aktifkan notifikasi"}
+          style={{
+            background: "none", border: "none", cursor: "pointer", padding: "3px 4px",
+            position: "relative", color: pushNotif.isEnabled ? "var(--ok)" : "var(--tx3)",
+            transition: "color .2s",
+          }}
+        >
+          <IC n="bell" s={16} c={pushNotif.isEnabled ? "var(--ok)" : "var(--tx3)"} />
+          {!pushNotif.isEnabled && pushNotif.supported && !pushNotif.isDenied && (
+            <div style={{ position:"absolute", top:2, right:2, width:7, height:7, borderRadius:"50%", background:"var(--y)", border:"1.5px solid var(--dk)" }}/>
+          )}
+        </button>
         <div style={{ textAlign: "right", cursor: "pointer" }} onClick={() => goTab("profile")}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--tx)" }}>{currentUser.name}</div>
           <div style={{ fontSize: 8.5, color: "var(--tx3)" }}>{fmtDS(now)} · {isAdmin ? "Pimpinan" : `Regu ${reguHari}`} · <span style={{color:fbOnline?"var(--ok)":"var(--r)",fontSize:10,transition:"color .5s"}}>●</span></div>
@@ -5914,6 +6575,22 @@ function App() {
                     <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,rgba(196,154,60,.8),transparent)",borderRadius:"10px 10px 0 0",pointerEvents:"none"}}/>
                     <span style={{ fontSize: 17 }}>🔑</span>
                     <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--tx2)" }}>Ganti PIN</span>
+                  </button>
+                );
+                if (t.isNotif) return (
+                  <button key="notifToggle" onClick={async () => {
+                    if (!pushNotif.isEnabled) {
+                      const r = await pushNotif.requestPermission();
+                      if (r === "granted") toast("🔔 Notifikasi berhasil diaktifkan!");
+                      else if (r === "denied") toast("Notifikasi diblokir di browser", false);
+                    } else {
+                      setMoreOpen(false);
+                      setSettingsOpen(true);
+                    }
+                  }} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "12px 8px", background: pushNotif.isEnabled ? "rgba(76,175,130,.12)" : "rgba(100,116,139,.08)", border: `1.5px solid ${pushNotif.isEnabled ? "rgba(76,175,130,.55)" : "rgba(100,116,139,.35)"}`, borderRadius: 10, cursor: "pointer", fontFamily: "inherit", transition: "all .1s", position: "relative", overflow: "hidden" }}>
+                    <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${pushNotif.isEnabled?"rgba(76,175,130,.8)":"rgba(100,116,139,.5)"},transparent)`,borderRadius:"10px 10px 0 0",pointerEvents:"none"}}/>
+                    <span style={{ fontSize: 17 }} className={pushNotif.isEnabled ? "" : ""}>{pushNotif.isEnabled ? "🔔" : "🔕"}</span>
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: pushNotif.isEnabled ? "var(--ok)" : "var(--tx2)" }}>{pushNotif.isEnabled ? "Notif ON" : "Notif OFF"}</span>
                   </button>
                 );
                 const active = tab === t.id;
@@ -5995,6 +6672,53 @@ function App() {
               </div>
             </div>
 
+            {/* Push Notification Toggle */}
+            <div style={{marginBottom:18}}>
+              <div style={{fontSize:10,fontWeight:700,color:"var(--tx3)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>Notifikasi</div>
+              {!pushNotif.supported ? (
+                <div style={{background:"rgba(196,154,60,.1)",border:"1px solid rgba(196,154,60,.3)",borderRadius:10,padding:"10px 14px",fontSize:11.5,color:"var(--y)"}}>
+                  ⚠️ Browser ini tidak mendukung Push Notification
+                </div>
+              ) : pushNotif.isDenied ? (
+                <div style={{background:"rgba(217,95,82,.1)",border:"1px solid rgba(217,95,82,.3)",borderRadius:10,padding:"10px 14px",fontSize:11.5,color:"var(--r)"}}>
+                  🚫 Notifikasi diblokir. Buka <strong>Pengaturan Browser</strong> → izinkan notifikasi untuk situs ini.
+                </div>
+              ) : (
+                <button
+                  className={"notif-toggle" + (pushNotif.isEnabled ? " active" : "")}
+                  onClick={async () => {
+                    if (!pushNotif.isEnabled) {
+                      await pushNotif.requestPermission();
+                    }
+                  }}
+                  style={{width:"100%",border:"none",textAlign:"left",fontFamily:"inherit"}}
+                >
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:22}}>{pushNotif.isEnabled ? "🔔" : "🔕"}</span>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:700,color:pushNotif.isEnabled?"var(--ok)":"var(--tx2)"}}>
+                        {pushNotif.isEnabled ? "Notifikasi Aktif" : "Aktifkan Notifikasi"}
+                      </div>
+                      <div style={{fontSize:10.5,color:"var(--tx3)",marginTop:1}}>
+                        {pushNotif.isEnabled
+                          ? "Kamu akan dapat notif instruksi & broadcast"
+                          : "Tap untuk izinkan notifikasi dari SIPAMDAL"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className={"notif-switch" + (pushNotif.isEnabled ? " on" : "")}/>
+                </button>
+              )}
+              {pushNotif.isEnabled && (
+                <button
+                  onClick={() => pushNotif.sendNotif("🧪 Test Notifikasi", "Notifikasi SIPAMDAL berfungsi dengan baik!", { tag: "test" })}
+                  style={{marginTop:8,width:"100%",padding:"8px 0",background:"rgba(76,175,130,.1)",border:"1px solid var(--ok)",borderRadius:8,color:"var(--ok)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}
+                >
+                  🧪 Kirim Test Notifikasi
+                </button>
+              )}
+            </div>
+
             {/* App info */}
             <div style={{background:"var(--card2)",borderRadius:10,padding:"12px 14px"}}>
               <div style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Tentang Aplikasi</div>
@@ -6013,9 +6737,9 @@ function App() {
       <main style={{ flex: 1, padding: "14px 14px 0", overflowY: "auto" }}>
         <div key={tabKey} className="tab-view">
         {tab === "search" && <SearchTab packages={packages} guests={guests} mutations={mutations} incidents={incidents} patrols={patrols} />}
-        {tab === "pimpinan" && <PimpinanTab now={now} patrols={patrols} incidents={incidents} posAssign={posAssign} instruksi={instruksi} mutations={mutations} currentUser={currentUser} packages={packages} guests={guests} reguHari={reguHari} liburData={liburData} setLiburData={setLiburData} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} statusPimpinan={statusPimpinan} setStatusPimpinan={setStatusPimpinan} toast={toast} />}
-        {tab === "dashboard" && !isAdmin && <DashTab now={now} shift={shift} reguHari={reguHari} posAssign={posAssign} incidents={incidents} packages={packages} guests={guests} patrols={patrols} standJaga={standJaga} mutations={mutations} posRollingLog={posRollingLog} liburData={liburData} setLiburData={setLiburData} instruksi={instruksi} currentUser={currentUser} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} keluarData={keluarData} statusPimpinan={statusPimpinan} setStatusPimpinan={setStatusPimpinan} toast={toast} />}
-        {tab === "dashboard" && isAdmin && <PimpinanTab now={now} patrols={patrols} incidents={incidents} posAssign={posAssign} instruksi={instruksi} mutations={mutations} currentUser={currentUser} packages={packages} guests={guests} reguHari={reguHari} liburData={liburData} setLiburData={setLiburData} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} statusPimpinan={statusPimpinan} setStatusPimpinan={setStatusPimpinan} toast={toast} />}
+        {tab === "pimpinan" && <PimpinanTab now={now} patrols={patrols} incidents={incidents} posAssign={posAssign} instruksi={instruksi} setInstruksi={setInstruksi} mutations={mutations} currentUser={currentUser} packages={packages} guests={guests} reguHari={reguHari} liburData={liburData} setLiburData={setLiburData} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} statusPimpinan={statusPimpinan} setStatusPimpinan={setStatusPimpinan} toast={toast} broadcast={broadcast} setBroadcast={setBroadcast} />}
+        {tab === "dashboard" && !isAdmin && <DashTab now={now} shift={shift} reguHari={reguHari} posAssign={posAssign} incidents={incidents} packages={packages} guests={guests} patrols={patrols} standJaga={standJaga} mutations={mutations} posRollingLog={posRollingLog} liburData={liburData} setLiburData={setLiburData} instruksi={instruksi} currentUser={currentUser} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} keluarData={keluarData} statusPimpinan={statusPimpinan} setStatusPimpinan={setStatusPimpinan} toast={toast} broadcast={broadcast} />}
+        {tab === "dashboard" && isAdmin && <PimpinanTab now={now} patrols={patrols} incidents={incidents} posAssign={posAssign} instruksi={instruksi} setInstruksi={setInstruksi} mutations={mutations} currentUser={currentUser} packages={packages} guests={guests} reguHari={reguHari} liburData={liburData} setLiburData={setLiburData} setTab={setTab} canEdit={canEdit} isAdmin={isAdmin} statusPimpinan={statusPimpinan} setStatusPimpinan={setStatusPimpinan} toast={toast} broadcast={broadcast} setBroadcast={setBroadcast} />}
         {tab === "jadwal" && <JadwalTab now={now} liburData={liburData} isAdmin={isAdmin} setTab={setTab} />}
         {tab === "pos" && <PosTab reguHari={reguHari} posAssign={posAssign} setPosAssign={setPosAssign} posRollingLog={posRollingLog} setPosRollingLog={setPosRollingLog} toast={toast} canEdit={canEdit} isAdmin={isAdmin} currentUser={currentUser} />}
         {tab === "stand" && <StandTab standJaga={standJaga} setStandJaga={setStandJaga} posAssign={posAssign} reguHari={reguHari} toast={toast} canEdit={canEdit} currentUser={currentUser} />}
@@ -6084,10 +6808,16 @@ function App() {
   );
 }
 
-// Register Service Worker
+// Register Service Worker + handle notif click
 if('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  });
+  // Handle klik notifikasi → fokus/buka app
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data && event.data.type === 'NOTIF_CLICK') {
+      window.focus();
+    }
   });
 }
 
